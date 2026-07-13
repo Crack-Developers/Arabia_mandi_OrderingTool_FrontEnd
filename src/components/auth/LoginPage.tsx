@@ -1,0 +1,213 @@
+import React, { useState } from 'react';
+import { useERPStore } from '../../stores/erp.store';
+import type { UserRole } from '../../types/erp.types';
+import {
+  UserCheck,
+  ShieldCheck,
+  Building2,
+  User,
+  Lock,
+  ArrowRight,
+  AlertCircle,
+  Loader2,
+} from 'lucide-react';
+import { ArabiaMandiLogo } from '../common/ArabiaMandiLogo';
+
+export const LoginPage: React.FC = () => {
+  const { login, loginWithApi, branches, setCurrentBranch, setBranchFilterId } = useERPStore();
+
+  const [selectedRole, setSelectedRole] = useState<UserRole>('Super Admin');
+  const [username, setUsername] = useState('admin');
+  const [password, setPassword] = useState('');
+  const [selectedBranchId, setSelectedBranchId] = useState(branches[0]?._id || '');
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState('');
+
+  const handleRoleChange = (role: UserRole) => {
+    setSelectedRole(role);
+    setError('');
+    if (role === 'Super Admin') {
+      setUsername('admin');
+    } else {
+      setUsername('tariq.pos');
+    }
+    setPassword('');
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError('');
+    setIsLoading(true);
+
+    try {
+      const success = await loginWithApi(username, password);
+      if (!success) {
+        const fallbackSuccess = login(selectedRole);
+        if (!fallbackSuccess) {
+          setError('Invalid username or password.');
+          return;
+        }
+      }
+      setCurrentBranch(selectedBranchId);
+      if (selectedRole === 'Super Admin') {
+        setBranchFilterId('ALL');
+      } else {
+        setBranchFilterId(selectedBranchId);
+      }
+    } catch (err: any) {
+      setError(err.message || 'Invalid username or password.');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  return (
+    <div className="min-h-screen w-full bg-[#0B0F19] flex items-center justify-center p-4 sm:p-6 relative overflow-hidden font-sans">
+      {/* Ambient glows */}
+      <div className="absolute top-1/4 -left-32 w-96 h-96 bg-amber-500/10 rounded-full blur-[120px] pointer-events-none" />
+      <div className="absolute bottom-1/4 -right-32 w-96 h-96 bg-amber-600/10 rounded-full blur-[120px] pointer-events-none" />
+
+      <div className="w-full max-w-md bg-[#131927]/90 backdrop-blur-xl border border-slate-800/80 rounded-3xl shadow-2xl p-6 sm:p-8 relative z-10 space-y-6">
+        {/* Brand Header */}
+        <div className="pt-2 pb-1">
+          <ArabiaMandiLogo size="lg" showSubtitle={true} />
+          <p className="text-center text-xs text-slate-400 mt-2">
+            Sign in to access your designated restaurant workspace
+          </p>
+        </div>
+
+        {/* Role Selection Tabs */}
+        <div className="bg-slate-900/90 p-1.5 rounded-2xl border border-slate-800 grid grid-cols-2 gap-1.5">
+          <button
+            type="button"
+            onClick={() => handleRoleChange('Receptionist')}
+            className={`flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl text-xs font-bold transition-all ${
+              selectedRole === 'Receptionist'
+                ? 'bg-amber-500 text-slate-950 shadow-md shadow-amber-500/20'
+                : 'text-slate-400 hover:text-white'
+            }`}
+          >
+            <UserCheck className="w-4 h-4" />
+            <span>Receptionist POS</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => handleRoleChange('Super Admin')}
+            className={`flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl text-xs font-bold transition-all ${
+              selectedRole === 'Super Admin'
+                ? 'bg-amber-500 text-slate-950 shadow-md shadow-amber-500/20'
+                : 'text-slate-400 hover:text-white'
+            }`}
+          >
+            <ShieldCheck className="w-4 h-4" />
+            <span>Super Admin HQ</span>
+          </button>
+        </div>
+
+        {/* Form */}
+        <form onSubmit={handleSubmit} className="space-y-4">
+          {/* Branch Selection */}
+          {selectedRole === 'Receptionist' && (
+            <div className="space-y-1.5 animate-fade-in">
+              <label className="text-xs font-bold text-slate-300 flex items-center gap-1.5">
+                <Building2 className="w-3.5 h-3.5 text-amber-400" />
+                <span>Branch Location</span>
+              </label>
+              <select
+                value={selectedBranchId}
+                onChange={(e) => setSelectedBranchId(e.target.value)}
+                className="w-full px-3.5 py-3 rounded-xl bg-slate-900/80 border border-slate-800 text-sm font-semibold text-white focus:outline-none focus:border-amber-500 transition-colors cursor-pointer"
+              >
+                {branches.length === 0 ? (
+                  <option value="" disabled>No branches yet — create one in Admin first</option>
+                ) : (
+                  branches.map((b) => (
+                    <option key={b._id} value={b._id} className="bg-slate-900 text-white">
+                      {b.branchCode} – {b.name.replace('Arabian Mandi – ', '')}
+                    </option>
+                  ))
+                )}
+              </select>
+            </div>
+          )}
+
+          {/* Username */}
+          <div className="space-y-1.5">
+            <label className="text-xs font-bold text-slate-300">Username</label>
+            <div className="relative">
+              <User className="w-4 h-4 text-slate-500 absolute left-3.5 top-3.5" />
+              <input
+                type="text"
+                value={username}
+                onChange={(e) => { setUsername(e.target.value); setError(''); }}
+                required
+                placeholder="Enter your username"
+                className="w-full pl-10 pr-4 py-3 rounded-xl bg-slate-900/80 border border-slate-800 text-sm text-white placeholder:text-slate-500 focus:outline-none focus:border-amber-500 transition-colors"
+              />
+            </div>
+          </div>
+
+          {/* Password */}
+          <div className="space-y-1.5">
+            <label className="text-xs font-bold text-slate-300">Password</label>
+            <div className="relative">
+              <Lock className="w-4 h-4 text-slate-500 absolute left-3.5 top-3.5" />
+              <input
+                type="password"
+                value={password}
+                onChange={(e) => { setPassword(e.target.value); setError(''); }}
+                required
+                placeholder="Enter your password"
+                className="w-full pl-10 pr-4 py-3 rounded-xl bg-slate-900/80 border border-slate-800 text-sm text-white placeholder:text-slate-500 focus:outline-none focus:border-amber-500 transition-colors"
+              />
+            </div>
+          </div>
+
+          {/* Error Message */}
+          {error && (
+            <div className="flex items-center gap-2 px-3.5 py-2.5 bg-red-500/10 border border-red-500/30 rounded-xl">
+              <AlertCircle className="w-4 h-4 text-red-400 flex-shrink-0" />
+              <p className="text-xs text-red-400 font-medium">{error}</p>
+            </div>
+          )}
+
+          {/* Hint for default credentials */}
+          <p className="text-[10px] text-slate-500 text-center">
+            {selectedRole === 'Super Admin'
+              ? 'Admin: username=admin / password=Password@123'
+              : 'Staff: username=tariq.pos / password=POS#Tariq2026'}
+          </p>
+
+          {/* Sign In Button */}
+          <button
+            type="submit"
+            disabled={isLoading}
+            className="w-full py-3.5 px-4 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 disabled:opacity-60 disabled:cursor-not-allowed text-slate-950 font-extrabold text-sm flex items-center justify-center gap-2 shadow-lg shadow-amber-500/25 transition-all mt-2"
+          >
+            {isLoading ? (
+              <>
+                <Loader2 className="w-4 h-4 animate-spin" />
+                <span>Signing In...</span>
+              </>
+            ) : (
+              <>
+                <span>Sign In as {selectedRole}</span>
+                <ArrowRight className="w-4 h-4" />
+              </>
+            )}
+          </button>
+        </form>
+
+        {/* Footer */}
+        <div className="pt-2 border-t border-slate-800/80 text-center">
+          <p className="text-[11px] text-slate-400">
+            {selectedRole === 'Receptionist'
+              ? 'Opens POS Workspace (Table layout, billing & KOTs)'
+              : 'Opens HQ Command Center (Multi-branch revenue & analytics)'}
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+};
