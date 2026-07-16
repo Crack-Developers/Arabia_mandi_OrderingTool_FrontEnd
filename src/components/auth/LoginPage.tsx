@@ -21,11 +21,27 @@ export const LoginPage: React.FC = () => {
   const [password, setPassword] = useState('');
   const [selectedBranchId, setSelectedBranchId] = useState(branches[0]?._id || '');
   const [isLoading, setIsLoading] = useState(false);
+  const [branchesLoading, setBranchesLoading] = useState(branches.length === 0);
   const [error, setError] = useState('');
 
   useEffect(() => {
-    fetchBranches();
-  }, [fetchBranches]);
+    let cancelled = false;
+    const load = async () => {
+      setBranchesLoading(true);
+      await fetchBranches();
+      if (!cancelled) setBranchesLoading(false);
+      // Retry once after 3 seconds in case Render cold-start caused a delay
+      setTimeout(async () => {
+        if (!cancelled && useERPStore.getState().branches.length === 0) {
+          await fetchBranches();
+          if (!cancelled) setBranchesLoading(false);
+        }
+      }, 3000);
+    };
+    load();
+    return () => { cancelled = true; };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => {
     if (branches.length > 0 && (!selectedBranchId || !branches.some(b => b._id === selectedBranchId))) {
@@ -137,8 +153,10 @@ export const LoginPage: React.FC = () => {
                 onChange={(e) => setSelectedBranchId(e.target.value)}
                 className="w-full px-3.5 py-3 rounded-xl bg-slate-900/80 border border-slate-800 text-sm font-semibold text-white focus:outline-none focus:border-amber-500 transition-colors cursor-pointer"
               >
-                {branches.length === 0 ? (
-                  <option value="" disabled>No branches yet — create one in Admin first</option>
+                {branchesLoading ? (
+                  <option value="" disabled>Loading branches…</option>
+                ) : branches.length === 0 ? (
+                  <option value="" disabled>No branches found — check your connection</option>
                 ) : (
                   branches.map((b) => (
                     <option key={b._id} value={b._id} className="bg-slate-900 text-white">
