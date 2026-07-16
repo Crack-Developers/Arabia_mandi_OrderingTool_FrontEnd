@@ -6,8 +6,7 @@
 
 const getBaseUrl = (): string => {
   if (import.meta.env.VITE_API_URL) return import.meta.env.VITE_API_URL;
-  const host = typeof window !== 'undefined' ? window.location.hostname : 'localhost';
-  return `http://${host}:5000/api/v1`;
+  return `https://arabia-mandi-orderingtool-backend.onrender.com/api/v1`;
 };
 
 const BASE_URL = getBaseUrl();
