@@ -893,8 +893,7 @@ export const ReceptionDashboard: React.FC = () => {
                   </div>
                 ) : (
                   Object.entries(groupedMenu).map(([categoryId, items]) => {
-                    const category = categories.find((c) => c._id === categoryId);
-                    if (!category) return null;
+                    const category = categories.find((c) => c._id === categoryId) || { _id: categoryId, name: 'Uncategorized' };
                     return (
                       <div key={categoryId} className="space-y-3">
                         <h3 className="font-extrabold text-sm text-slate-800 border-b border-slate-200 pb-1.5 flex items-center gap-2">
