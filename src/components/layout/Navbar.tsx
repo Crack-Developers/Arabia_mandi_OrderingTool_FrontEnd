@@ -39,7 +39,6 @@ export const Navbar: React.FC = () => {
     syncQueue,
     isSyncing,
     triggerSyncQueue,
-    showLiveOrdersOnly,
     setShowLiveOrdersOnly,
   } = useERPStore();
 

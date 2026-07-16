@@ -1150,7 +1150,7 @@ export const useERPStore = create<ERPState>()(
     };
 
     // Mark all current items as printed → they go grey immediately
-    const updatedItems = order.items.map((item) => ({ ...item, kotPrinted: true }));
+    const updatedItems = order.items.map((item: any) => ({ ...item, kotPrinted: true }));
     const updatedOrder = {
       ...order,
       status: 'Active' as const,
