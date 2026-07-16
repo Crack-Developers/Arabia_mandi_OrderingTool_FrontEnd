@@ -8,10 +8,9 @@ export const TableManagementScreen: React.FC = () => {
     tables,
     sections,
     activeOrders,
-    openReservationModal,
-    unreserveTable,
     checkExpiredReservations,
     setSelectedTable,
+    setPosViewMode,
     setActiveScreen,
   } = useERPStore();
 
@@ -45,7 +44,10 @@ export const TableManagementScreen: React.FC = () => {
   const [customSectionName, setCustomSectionName] = useState('');
   const [capacity, setCapacity] = useState<number>(4);
 
-  const filtered = tables.filter((t) => {
+  const branchTables = tables.filter(
+    (t) => !currentBranch?._id || t.branchId === currentBranch._id || !t.branchId
+  );
+  const filtered = branchTables.filter((t) => {
     if (filterSection === 'ALL') return true;
     const selectedSec = displaySections.find((s) => s._id === filterSection);
     return t.sectionId === filterSection || (selectedSec && t.sectionName === selectedSec.name);
@@ -63,6 +65,8 @@ export const TableManagementScreen: React.FC = () => {
         return 'bg-blue-500/15 text-blue-800 border-blue-500/30';
       case 'Merged':
         return 'bg-purple-500/15 text-purple-800 border-purple-500/30';
+      case 'Hold':
+        return 'bg-orange-500/15 text-orange-800 border-orange-500/30';
       default:
         return 'bg-slate-100 text-slate-800 border-slate-300';
     }
@@ -140,12 +144,16 @@ export const TableManagementScreen: React.FC = () => {
           const foundSec = displaySections.find((sec) => sec._id === table.sectionId || sec.name === table.sectionName);
           const sectionName = foundSec?.name || table.sectionName || 'Dining Hall';
           const floorName = foundSec?.floor || 'Ground Floor';
+          const hasOrder = !!order && order.total > 0;
+          const effectiveStatus = table.status === 'Hold' || order?.status === 'Hold' || (hasOrder && table.status === 'Available')
+            ? 'Hold'
+            : table.status;
 
           return (
             <div
               key={table._id}
               className={`p-5 rounded-2xl border-2 transition-all bg-white flex flex-col justify-between space-y-4 ${getStatusColor(
-                table.status
+                effectiveStatus
               )}`}
             >
               <div>
@@ -153,8 +161,8 @@ export const TableManagementScreen: React.FC = () => {
                   <span className="font-extrabold text-lg text-slate-900">
                     Table {table.tableNumber}
                   </span>
-                  <span className="px-2.5 py-1 rounded-full bg-white/80 font-bold text-xs shadow-sm">
-                    {table.status}
+                  <span className="px-2.5 py-1 rounded-full bg-white/80 font-bold text-xs shadow-sm uppercase">
+                    {effectiveStatus === 'Hold' ? 'ON HOLD' : table.status}
                   </span>
                 </div>
                 <div className="flex items-center gap-2 mt-1">
@@ -196,32 +204,17 @@ export const TableManagementScreen: React.FC = () => {
               </div>
 
               {/* Quick Actions */}
-              <div className="pt-3 border-t border-slate-200/60 grid grid-cols-2 gap-2">
+              <div className="pt-3 border-t border-slate-200/60">
                 <button
                   onClick={() => {
                     setSelectedTable(table._id);
+                    setPosViewMode('ORDERING');
                     setActiveScreen('POS_WORKSPACE');
                   }}
-                  className="py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs flex items-center justify-center gap-1.5 shadow-sm"
+                  className="w-full py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs flex items-center justify-center gap-1.5 shadow-sm transition-all"
                 >
                   <span>Open POS</span>
                 </button>
-
-                {table.status === 'Reserved' ? (
-                  <button
-                    onClick={() => unreserveTable(table._id)}
-                    className="py-2 rounded-xl bg-red-50 hover:bg-red-100 border border-red-300 text-red-700 font-bold text-xs flex items-center justify-center gap-1.5 shadow-sm"
-                  >
-                    <span>Unreserve</span>
-                  </button>
-                ) : (
-                  <button
-                    onClick={() => openReservationModal(table._id)}
-                    className="py-2 rounded-xl bg-white hover:bg-slate-100 border border-slate-300 text-slate-800 font-bold text-xs flex items-center justify-center gap-1.5 shadow-sm"
-                  >
-                    <span>Reserve</span>
-                  </button>
-                )}
               </div>
             </div>
           );

@@ -4,7 +4,13 @@
  * Base URL: http://localhost:5000/api/v1
  */
 
-const BASE_URL = 'http://localhost:5000/api/v1';
+const getBaseUrl = (): string => {
+  if (import.meta.env.VITE_API_URL) return import.meta.env.VITE_API_URL;
+  const host = typeof window !== 'undefined' ? window.location.hostname : 'localhost';
+  return `http://${host}:5000/api/v1`;
+};
+
+const BASE_URL = getBaseUrl();
 
 // ─── Token helpers ───────────────────────────────────────────────
 export const getToken = (): string | null => localStorage.getItem('erp_token');
@@ -37,6 +43,12 @@ async function request<T>(
   }
 
   if (!res.ok) {
+    if (res.status === 401) {
+      localStorage.removeItem('erp_token');
+      import('../stores/erp.store').then(({ useERPStore }) => {
+        useERPStore.getState().logout();
+      }).catch(() => {});
+    }
     throw new Error(json?.message || `Request failed: ${res.status}`);
   }
 
@@ -44,10 +56,22 @@ async function request<T>(
   return json?.data !== undefined ? json.data : json;
 }
 
+const cleanBody = (body: any) => {
+  if (body && typeof body === 'object' && !Array.isArray(body)) {
+    const cleaned = { ...body };
+    delete cleaned._id;
+    delete cleaned.__v;
+    delete cleaned.createdAt;
+    delete cleaned.updatedAt;
+    return cleaned;
+  }
+  return body;
+};
+
 const get  = <T>(path: string)              => request<T>('GET',    path);
 const post = <T>(path: string, body: any)   => request<T>('POST',   path, body);
-const put  = <T>(path: string, body: any)   => request<T>('PUT',    path, body);
-const patch= <T>(path: string, body?: any)  => request<T>('PATCH',  path, body);
+const put  = <T>(path: string, body: any)   => request<T>('PUT',    path, cleanBody(body));
+const patch= <T>(path: string, body?: any)  => request<T>('PATCH',  path, cleanBody(body));
 const del  = <T>(path: string)              => request<T>('DELETE', path);
 
 // ────────────────────────────────────────────────────────────────────────────
@@ -123,14 +147,20 @@ export const tableApi = {
 // ────────────────────────────────────────────────────────────────────────────
 export const menuApi = {
   // Categories
-  getAllCategories: () => get<any>('/menu/categories'),
+  getAllCategories: (branchId?: string) =>
+    get<any>(`/menu/categories${branchId ? `?branchId=${branchId}` : ''}`),
   createCategory: (data: any) => post<any>('/menu/categories', data),
   updateCategory: (id: string, data: any) => put<any>(`/menu/categories/${id}`, data),
   deleteCategory: (id: string) => del<any>(`/menu/categories/${id}`),
 
   // Items
-  getAllItems: (categoryId?: string) =>
-    get<any>(`/menu/items${categoryId ? `?categoryId=${categoryId}` : ''}`),
+  getAllItems: (branchId?: string, categoryId?: string) => {
+    const params = new URLSearchParams();
+    if (branchId)   params.set('branchId', branchId);
+    if (categoryId) params.set('categoryId', categoryId);
+    const qs = params.toString();
+    return get<any>(`/menu/items${qs ? `?${qs}` : ''}`);
+  },
   getItemById: (id: string) => get<any>(`/menu/items/${id}`),
   createItem: (data: any) => post<any>('/menu/items', data),
   updateItem: (id: string, data: any) => put<any>(`/menu/items/${id}`, data),
@@ -148,10 +178,11 @@ export const orderApi = {
   create: (data: any) => post<any>('/orders', data),
   addItems: (id: string, items: any[]) => post<any>(`/orders/${id}/add-items`, { items }),
   updateStatus: (id: string, status: string) => patch<any>(`/orders/${id}/status`, { status }),
-  generateKOT: (id: string) => post<any>(`/orders/${id}/kot`, {}),
+  generateKOT: (id: string, withPrint: boolean = true) => post<any>(`/orders/${id}/kot`, { withPrint }),
   generateBill: (id: string, branchId: string) => post<any>(`/orders/${id}/bill`, { branchId }),
   processPayment: (billId: string, paymentMethods: { cash: number; card: number; upi: number }) =>
     post<any>('/orders/payment', { billId, paymentMethods }),
+  syncLocal: (orderData: any) => post<any>('/orders/sync-local', orderData),
 };
 
 // ────────────────────────────────────────────────────────────────────────────
@@ -169,6 +200,35 @@ export const notificationApi = {
 // ────────────────────────────────────────────────────────────────────────────
 export const dashboardApi = {
   getAdminStats: () => get<any>('/dashboard/admin'),
+  getStats: (filterType: string = 'day', date?: string, branchId?: string, month?: string, year?: string) => {
+    const params = new URLSearchParams();
+    if (filterType) params.set('filterType', filterType);
+    if (date)       params.set('date', date);
+    if (month)      params.set('month', month);
+    if (year)       params.set('year', year);
+    if (branchId && branchId !== 'ALL') params.set('branchId', branchId);
+    const qs = params.toString();
+    return get<any>(`/dashboard/stats${qs ? `?${qs}` : ''}`);
+  },
+  getLeakageLogs: (type: string, filterType: string = 'day', date?: string, branchId?: string, month?: string, year?: string) => {
+    const params = new URLSearchParams({ type });
+    if (filterType) params.set('filterType', filterType);
+    if (date)       params.set('date', date);
+    if (month)      params.set('month', month);
+    if (year)       params.set('year', year);
+    if (branchId && branchId !== 'ALL') params.set('branchId', branchId);
+    return get<any>(`/dashboard/leakage-logs?${params.toString()}`);
+  },
+  getDishSummary: (filterType: string, date?: string, month?: string, year?: string, category?: string, branchId?: string) => {
+    const params = new URLSearchParams();
+    if (filterType) params.set('filterType', filterType);
+    if (date)       params.set('date', date);
+    if (month)      params.set('month', month);
+    if (year)       params.set('year', year);
+    if (category && category !== 'ALL') params.set('category', category);
+    if (branchId && branchId !== 'ALL') params.set('branchId', branchId);
+    return get<any>(`/dashboard/dish-summary?${params.toString()}`);
+  },
 };
 
 // ────────────────────────────────────────────────────────────────────────────
@@ -192,12 +252,16 @@ export const clearToken = () => localStorage.removeItem('erp_token');
 export const printerApi = {
   getAll: (branchId?: string) =>
     get<any>(`/printers${branchId ? `?branchId=${branchId}` : ''}`),
-  scanLAN: () => get<any>('/printers/scan'),
+  scanLAN: (branchId?: string) =>
+    get<any>(`/printers/scan${branchId ? `?branchId=${branchId}` : ''}`),
+  pingLAN: (ip: string, port = 9100) => post<any>('/printers/ping', { ip, port }),
   create: (data: any) => post<any>('/printers', data),
   update: (id: string, data: any) => put<any>(`/printers/${id}`, data),
-  delete: (id: string) => del<any>(`/printers/${id}`),
+  delete: (id: string, branchId?: string) =>
+    del<any>(`/printers/${id}${branchId ? `?branchId=${branchId}` : ''}`),
   printJob: (printerId: string, payload: any) =>
     post<any>('/printers/print', { printerId, payload }),
+  dispatchKOT: (kotPayload: any) => post<any>('/printers/dispatch-kot', kotPayload),
 };
 
 

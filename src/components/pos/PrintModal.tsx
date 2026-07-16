@@ -1,10 +1,10 @@
 import React from 'react';
 import { useERPStore } from '../../stores/erp.store';
 import type { KOT, Bill } from '../../types/erp.types';
-import { Printer, X } from 'lucide-react';
+import { Printer, X, CheckCircle2 } from 'lucide-react';
 
 export const PrintModal: React.FC = () => {
-  const { printModal, closePrintModal, currentBranch } = useERPStore();
+  const { printModal, closePrintModal, currentBranch, printers, printKOTBySection } = useERPStore();
 
   if (!printModal.isOpen || !printModal.data) return null;
 
@@ -13,54 +13,94 @@ export const PrintModal: React.FC = () => {
   const billData = !isKOT ? (printModal.data as Bill) : null;
   const orderData = printModal.orderData;
 
-  const handlePrint = () => {
+  // Items to display: for KOT use kotData.items, for Bill use orderData.items
+  const displayItems: any[] = isKOT
+    ? (kotData?.items || [])
+    : (orderData?.items || []);
+
+  const handlePrint = async () => {
+    // 1. Browser print (works for browser-attached printers)
     window.print();
+
+    // 2. If we have a registered thermal printer, also send via API respecting assignments
+    if (printers && printers.length > 0) {
+      if (isKOT && kotData) {
+        await printKOTBySection(kotData, orderData?.tableId || '');
+      } else if (billData) {
+        const receiptPrinter = printers.find(
+          (p) =>
+            p.isActive !== false &&
+            (p.duty === 'RECEIPT' ||
+              p.duty === 'BOTH' ||
+              p.role === 'cashier' ||
+              p.role === 'both' ||
+              p.role === 'receipt')
+        );
+        if (receiptPrinter) {
+          try {
+            const { printerApi } = await import('../../services/api.service');
+            await printerApi.printJob(receiptPrinter._id, {
+              type: 'BILL',
+              tableId: orderData?.tableId || '',
+              billNumber: billData.billNumber,
+              branchName: currentBranch.name,
+              subtotal: billData.subtotal,
+              cgst: billData.cgst,
+              sgst: billData.sgst,
+              grandTotal: billData.grandTotal,
+              items: displayItems,
+            });
+          } catch {
+            // Silent fail – browser print still happened
+          }
+        }
+      }
+    }
   };
 
   return (
     <div className="fixed inset-0 bg-slate-950/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-      <div className="bg-white rounded-2xl max-w-md w-full overflow-hidden shadow-2xl border border-slate-200 animate-fade-in">
-        {/* Header (No print) */}
+      <div className="bg-white rounded-2xl max-w-md w-full overflow-hidden shadow-2xl border border-slate-200">
+        {/* Header */}
         <div className="p-4 bg-slate-900 text-white flex items-center justify-between no-print">
           <div className="flex items-center gap-2">
             <Printer className="w-5 h-5 text-amber-400" />
             <span className="font-bold text-sm">
-              {isKOT ? 'Kitchen Order Dispatched' : 'Tax Invoice / Bill Preview'}
+              {isKOT ? 'Kitchen Order Ticket (KOT)' : 'Tax Invoice / Bill Preview'}
             </span>
           </div>
           <button
             onClick={closePrintModal}
-            className="p-1 rounded-lg hover:bg-slate-800 text-slate-400 hover:text-white"
+            className="p-1 rounded-lg hover:bg-slate-800 text-slate-400 hover:text-white transition-colors"
           >
             <X className="w-5 h-5" />
           </button>
         </div>
 
-        {/* Success Banner for KOT */}
+        {/* KOT Success Banner */}
         {isKOT && (
-          <div className="bg-emerald-500 text-white px-4 py-2 flex items-center justify-center gap-2 text-xs font-bold shadow-inner no-print">
-            <Printer className="w-4 h-4 animate-pulse" />
-            <span>Order placed and printed automatically in the kitchen!</span>
+          <div className="bg-emerald-500 text-white px-4 py-2.5 flex items-center justify-center gap-2 text-xs font-bold no-print">
+            <CheckCircle2 className="w-4 h-4" />
+            <span>KOT sent to kitchen! {printers.length > 0 ? 'Printing on thermal printer...' : ''}</span>
           </div>
         )}
 
-        {/* Thermal Receipt Content Area (80mm representation) */}
+        {/* Thermal Receipt Content (80mm representation) */}
         <div id="printable-area" className={`p-6 font-mono text-xs text-slate-800 space-y-4 ${isKOT ? 'bg-amber-50/30' : 'bg-white'}`}>
-          {/* Header */}
+
+          {/* Branch Header */}
           <div className="text-center border-b-2 border-dashed border-slate-300 pb-3">
             {currentBranch.receiptSettings?.printLogo && (
               <div className="flex justify-center mb-1">
-                <div className="w-8 h-8 rounded-full bg-slate-900 text-white flex items-center justify-center font-bold text-xs">
-                  AM
-                </div>
+                <div className="w-8 h-8 rounded-full bg-slate-900 text-white flex items-center justify-center font-bold text-xs">AM</div>
               </div>
             )}
-            <h2 className="font-extrabold text-base uppercase tracking-wider">
-              {currentBranch.receiptSettings?.headerText || currentBranch.name}
+            <h2 className="font-extrabold text-sm uppercase tracking-wider">
+              {currentBranch.receiptSettings?.headerText || currentBranch.name || 'Arabian Mandi'}
             </h2>
-            <p className="text-[10px] text-slate-500 mt-0.5">{currentBranch.address}</p>
-            <p className="text-[10px] text-slate-500">Phone: {currentBranch.phone}</p>
-            <p className="text-[10px] font-bold mt-1">GSTIN: {currentBranch.gst}</p>
+            {currentBranch.address && <p className="text-[10px] text-slate-500 mt-0.5">{currentBranch.address}</p>}
+            {currentBranch.phone && <p className="text-[10px] text-slate-500">Ph: {currentBranch.phone}</p>}
+            {currentBranch.gst && <p className="text-[10px] font-bold mt-1">GSTIN: {currentBranch.gst}</p>}
           </div>
 
           {/* Metadata */}
@@ -71,50 +111,65 @@ export const PrintModal: React.FC = () => {
             </div>
             <div className="flex justify-between">
               <span>Table:</span>
-              <span className="font-bold">Table {orderData?.tableNumber || billData?.tableNumber}</span>
+              <span className="font-bold">
+                {orderData?.tableNumber || billData?.tableNumber || orderData?.tableId || '—'}
+              </span>
             </div>
             <div className="flex justify-between">
               <span>Time:</span>
-              <span>{isKOT ? kotData?.printedAt : billData?.createdAt}</span>
+              <span>{isKOT ? (kotData?.printedAt || kotData?.timestamp) : (billData?.createdAt)}</span>
             </div>
-            {isKOT && (
+            {isKOT && kotData?.printedBy && (
               <div className="flex justify-between">
-                <span>Printed By:</span>
-                <span>{kotData?.printedBy}</span>
+                <span>By:</span>
+                <span>{kotData.printedBy}</span>
+              </div>
+            )}
+            {!isKOT && orderData?.orderNumber && (
+              <div className="flex justify-between">
+                <span>Order:</span>
+                <span className="font-bold">{orderData.orderNumber}</span>
               </div>
             )}
           </div>
 
-          {/* Items Table */}
+          {/* Items */}
           <div className="border-b border-dashed border-slate-300 pb-3">
             <div className="flex justify-between font-bold border-b border-slate-200 pb-1 mb-2 text-[11px]">
-              <span>ITEM & PORTION</span>
-              <span>QTY</span>
-              {!isKOT && <span>TOTAL</span>}
+              <span className="flex-1">ITEM & PORTION</span>
+              <span className="w-8 text-center">QTY</span>
+              {!isKOT && <span className="w-16 text-right">TOTAL</span>}
             </div>
 
             <div className="space-y-2">
-              {(isKOT ? kotData?.items : orderData?.items)?.map((item: any, i: number) => (
+              {displayItems.length === 0 ? (
+                <p className="text-slate-400 text-center py-2">No items</p>
+              ) : displayItems.map((item: any, i: number) => (
                 <div key={i} className="space-y-0.5">
                   <div className="flex justify-between font-semibold">
-                    <span>
-                      {item.name} ({item.variantName.split(' ')[0]})
+                    <span className="flex-1 pr-2">
+                      {item.name}
+                      {item.variantName ? ` (${item.variantName.split(' ')[0]})` : ''}
                     </span>
-                    <span className="font-bold">x{item.quantity}</span>
-                    {!isKOT && <span>₹{item.price * item.quantity}</span>}
+                    <span className="w-8 text-center font-bold">x{item.quantity || 1}</span>
+                    {!isKOT && (
+                      <span className="w-16 text-right">
+                        ₹{((item.price || 0) * (item.quantity || 1)).toFixed(0)}
+                      </span>
+                    )}
                   </div>
-                  {item.addons.length > 0 && (
+                  {/* Addons */}
+                  {(item.addons || []).length > 0 && (
                     <div className="text-[10px] text-slate-500 pl-2">
-                      {item.addons.map((a: any, j: number) => (
-                        <span key={j} className="block">
-                          + {a.name}
-                        </span>
+                      {(item.addons as any[]).map((a, j) => (
+                        <span key={j} className="block">+ {a.name || a}</span>
                       ))}
                     </div>
                   )}
-                  {isKOT && item.notes && (
-                    <div className="text-[10px] font-bold text-amber-800 bg-amber-50 p-1 rounded">
-                      ** {item.notes} **
+                  {/* Notes */}
+                  {(item.notes || item.note) && (
+                    <div className="text-[10px] font-bold text-amber-800 bg-amber-50 px-2 py-0.5 rounded">
+                      ** {item.notes || item.note} **
                     </div>
                   )}
                 </div>
@@ -122,46 +177,52 @@ export const PrintModal: React.FC = () => {
             </div>
           </div>
 
-          {/* Totals (Only for Bill) */}
+          {/* Totals — only for Bill */}
           {!isKOT && billData && (
-            <div className="space-y-1 text-right border-b border-dashed border-slate-300 pb-3">
+            <div className="space-y-1 border-b border-dashed border-slate-300 pb-3">
               <div className="flex justify-between text-slate-600">
                 <span>Subtotal:</span>
-                <span>₹{billData.subtotal}</span>
+                <span>₹{Number(billData.subtotal || 0).toFixed(2)}</span>
               </div>
               <div className="flex justify-between text-slate-600">
                 <span>CGST (2.5%):</span>
-                <span>₹{billData.cgst}</span>
+                <span>₹{Number(billData.cgst || 0).toFixed(2)}</span>
               </div>
               <div className="flex justify-between text-slate-600">
                 <span>SGST (2.5%):</span>
-                <span>₹{billData.sgst}</span>
+                <span>₹{Number(billData.sgst || 0).toFixed(2)}</span>
               </div>
               <div className="flex justify-between font-extrabold text-sm pt-1 border-t border-slate-200">
                 <span>GRAND TOTAL:</span>
-                <span>₹{billData.grandTotal}</span>
+                <span>₹{Number(billData.grandTotal || billData.total || 0).toFixed(2)}</span>
               </div>
+              {billData.paymentStatus && (
+                <div className="flex justify-between text-slate-500 text-[10px]">
+                  <span>Status:</span>
+                  <span className="font-bold">{billData.paymentStatus}</span>
+                </div>
+              )}
             </div>
           )}
 
-          {/* Footer message */}
-          <div className="text-center text-[10px] text-slate-500 pt-2">
+          {/* Footer */}
+          <div className="text-center text-[10px] text-slate-500 pt-1">
             <p className="font-bold">
               {isKOT
                 ? '*** KITCHEN COPY – ARABIAN MANDI ***'
-                : currentBranch.receiptSettings?.footerText || 'Thank you for dining at Arabian Mandi! Please visit again'}
+                : (currentBranch.receiptSettings?.footerText || 'Thank you for dining with us!')}
             </p>
           </div>
         </div>
 
-        {/* Modal Action Footer (No print) */}
+        {/* Action Footer */}
         <div className="p-4 bg-slate-50 border-t border-slate-200 flex gap-3 no-print">
           {isKOT ? (
             <button
               onClick={closePrintModal}
               className="w-full py-3 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-sm font-bold shadow-md transition-all"
             >
-              Close Confirmation
+              ✓ Close KOT Confirmation
             </button>
           ) : (
             <>

@@ -83,7 +83,7 @@ export interface Table {
   sectionName?: string;
   tableNumber: string;
   capacity: number;
-  status: 'Available' | 'Occupied' | 'Reserved' | 'Billing' | 'Merged';
+  status: 'Available' | 'Occupied' | 'Reserved' | 'Billing' | 'Merged' | 'Hold';
   mergedWith?: string[];
   reservation?: TableReservation;
   occupiedSince?: string;
@@ -121,6 +121,7 @@ export interface MenuItem {
   addons: MenuItemAddon[];
   printerId?: string;
   badge?: string;
+  core?: number;
   available: boolean;
   active?: boolean;
   taxRate?: number;
@@ -138,6 +139,8 @@ export interface OrderItem {
   addons: MenuItemAddon[];
   notes?: string;
   status?: string;
+  taxRate?: number;
+  kotPrinted?: boolean;  // true = already sent to kitchen; shown greyed-out
   [key: string]: any;
 }
 
@@ -200,6 +203,7 @@ export interface Printer {
   port?: number;
   type: 'thermal' | 'ipp' | 'pdf';
   duty?: 'KOT' | 'RECEIPT' | 'BOTH';
+  role?: string;
   floor?: string;
   sections: string[];
   branchId?: string;

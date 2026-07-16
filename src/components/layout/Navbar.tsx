@@ -16,9 +16,9 @@ import {
   Grid3X3,
   BarChart3,
   Printer,
+  PieChart,
 } from 'lucide-react';
 import { ArabiaMandiLogo } from '../common/ArabiaMandiLogo';
-import { PrinterSettingsModal } from '../common/PrinterSettingsModal';
 
 export const Navbar: React.FC = () => {
   const {
@@ -27,6 +27,8 @@ export const Navbar: React.FC = () => {
     logout,
     activeScreen,
     setActiveScreen,
+    setPosViewMode,
+    setSelectedTable,
     branches,
     branchFilterId,
     setBranchFilterId,
@@ -37,10 +39,11 @@ export const Navbar: React.FC = () => {
     syncQueue,
     isSyncing,
     triggerSyncQueue,
+    showLiveOrdersOnly,
+    setShowLiveOrdersOnly,
   } = useERPStore();
 
   const [showNotifs, setShowNotifs] = useState(false);
-  const [showPrinterModal, setShowPrinterModal] = useState(false);
   const unreadCount = notifications.filter((n) => !n.read).length;
 
   return (
@@ -68,7 +71,7 @@ export const Navbar: React.FC = () => {
         <div className="h-6 w-px bg-slate-700 hidden sm:block" />
 
         {/* Branch Switcher (Super Admin Only) */}
-        {activeRole === 'Super Admin' ? (
+        {activeRole === 'Super Admin' && (
           <div className="hidden lg:flex items-center gap-2 bg-slate-800/80 px-3 py-1.5 rounded-lg border border-slate-700">
             <Building2 className="w-4 h-4 text-amber-400" />
             <select
@@ -86,14 +89,22 @@ export const Navbar: React.FC = () => {
               ))}
             </select>
           </div>
-        ) : (
-          <div className="hidden lg:flex items-center gap-2 bg-slate-800/80 px-3 py-1.5 rounded-lg border border-slate-700">
-            <Building2 className="w-4 h-4 text-amber-400" />
-            <span className="text-sm font-semibold text-amber-400 max-w-[150px] truncate" title={branches.find(b => b._id === branchFilterId)?.name}>
-              {branches.find(b => b._id === branchFilterId)?.name || 'Branch Workspace'}
-            </span>
-          </div>
         )}
+
+        {/* Quick Return to Entire POS Tables Layout */}
+        <button
+          onClick={() => {
+            setActiveScreen('POS_WORKSPACE');
+            if (setPosViewMode) setPosViewMode('TABLES');
+            if (setSelectedTable) setSelectedTable('');
+            if (setShowLiveOrdersOnly) setShowLiveOrdersOnly(false);
+          }}
+          className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold bg-amber-500/15 text-amber-400 border border-amber-500/30 hover:bg-amber-500/25 hover:text-amber-300 transition-all shadow-2xs cursor-pointer"
+          title="Immediately return to entire POS tables layout"
+        >
+          <Grid3X3 className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+          <span>Live Orders</span>
+        </button>
       </div>
 
       {/* Top Navigation Center */}
@@ -102,7 +113,9 @@ export const Navbar: React.FC = () => {
           { id: 'POS_WORKSPACE', label: 'POS', icon: LayoutDashboard, roles: ['Receptionist'] },
           { id: 'TABLE_LAYOUT', label: 'Tables', icon: Grid3X3, roles: ['Receptionist'] },
           { id: 'MENU_MANAGER', label: 'Menu', icon: UtensilsCrossed, roles: ['Receptionist'] },
+          { id: 'PRINTER_MANAGEMENT', label: 'Printers', icon: Printer, roles: ['Receptionist', 'Super Admin'] },
           { id: 'ADMIN_ANALYTICS', label: 'HQ Analytics', icon: BarChart3, roles: ['Super Admin'] },
+          { id: 'ADMIN_DISH_SUMMARY', label: 'Summary', icon: PieChart, roles: ['Super Admin'] },
           { id: 'BRANCH_SETTINGS', label: 'Settings', icon: Settings, roles: ['Super Admin'] },
         ]
           .filter((item) => item.roles.includes(activeRole || 'Receptionist'))
@@ -112,7 +125,14 @@ export const Navbar: React.FC = () => {
             return (
               <button
                 key={item.id}
-                onClick={() => setActiveScreen(item.id as any)}
+                onClick={() => {
+                  if (item.id === 'POS_WORKSPACE') {
+                    if (setPosViewMode) setPosViewMode('TABLES');
+                    if (setSelectedTable) setSelectedTable('');
+                    if (setShowLiveOrdersOnly) setShowLiveOrdersOnly(false);
+                  }
+                  setActiveScreen(item.id as any);
+                }}
                 className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-extrabold transition-all whitespace-nowrap cursor-pointer ${
                   isActive
                     ? 'bg-amber-500/15 text-amber-400 border border-amber-500/40 shadow-sm'
@@ -162,15 +182,6 @@ export const Navbar: React.FC = () => {
             <span>Sync ({syncQueue.length})</span>
           </button>
         )}
-
-        {/* Wireless Printers Configuration Button */}
-        <button
-          onClick={() => setShowPrinterModal(true)}
-          className="p-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-amber-400 transition-all cursor-pointer"
-          title="Wireless KOT Network Printers"
-        >
-          <Printer className="w-5 h-5" />
-        </button>
 
         {/* Notifications Dropdown */}
         <div className="relative">
@@ -248,10 +259,7 @@ export const Navbar: React.FC = () => {
         </div>
       </div>
 
-      <PrinterSettingsModal
-        isOpen={showPrinterModal}
-        onClose={() => setShowPrinterModal(false)}
-      />
+
     </header>
   );
 };

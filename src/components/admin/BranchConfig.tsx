@@ -8,8 +8,6 @@ import {
   Trash2,
   Search,
   Users,
-  FileSpreadsheet,
-  Printer,
   Bell,
   ArrowLeft,
   X,
@@ -26,7 +24,6 @@ import {
   EyeOff,
   UserCheck,
   Briefcase,
-  Save,
   Layers,
   Utensils,
 } from 'lucide-react';
@@ -47,12 +44,20 @@ export const BranchConfig: React.FC = () => {
     updateUser,
     deleteUser,
     resetUserPassword,
+    fetchBranches,
+    fetchStaffList,
   } = useERPStore();
 
-  // Default active tab to TAX so user sees the newly requested Tax & Billing page
+  // Always refresh branches and staff from the backend when Settings opens
+  useEffect(() => {
+    fetchBranches();
+    fetchStaffList();
+  }, []);
+
+  // Default active tab to BRANCH management
   const [activeSettingsTab, setActiveSettingsTab] = useState<
-    'BRANCH' | 'USERS' | 'TAX' | 'PRINTER' | 'NOTIFICATIONS'
-  >('TAX');
+    'BRANCH' | 'USERS' | 'NOTIFICATIONS'
+  >('BRANCH');
   const [newSectionName, setNewSectionName] = useState('');
   const [newSectionFloor, setNewSectionFloor] = useState('Ground Floor');
   const [newSectionTables, setNewSectionTables] = useState<number>(10);
@@ -76,145 +81,6 @@ export const BranchConfig: React.FC = () => {
 
   const [sharingStaff, setSharingStaff] = useState<Staff | null>(null);
   const [copiedCredential, setCopiedCredential] = useState(false);
-
-  // =========================================================================
-  // STATE: PER-BRANCH TAX & BILLING CONFIGURATION
-  // =========================================================================
-  const [selectedTaxBranchId, setSelectedTaxBranchId] = useState<string>(
-    currentBranch?._id || (branches[0]?._id ?? '')
-  );
-
-  const [taxGstPercent, setTaxGstPercent] = useState<number>(5);
-  const [taxServiceCharge, setTaxServiceCharge] = useState<number>(0);
-  const [taxCgst, setTaxCgst] = useState<number>(2.5);
-  const [taxSgst, setTaxSgst] = useState<number>(2.5);
-  const [taxDiscountRule, setTaxDiscountRule] = useState<string>('Standard');
-  const [taxRoundOff, setTaxRoundOff] = useState<boolean>(true);
-  const [taxPricesInclude, setTaxPricesInclude] = useState<boolean>(false);
-
-  // Load tax settings when selectedTaxBranchId changes
-  useEffect(() => {
-    const b = branches.find((br) => br._id === selectedTaxBranchId) || branches[0];
-    if (b && b.taxes) {
-      setTaxGstPercent(b.taxes.gstPercentage ?? (b.taxes.cgst + b.taxes.sgst || 5));
-      setTaxServiceCharge(b.taxes.serviceCharge ?? 0);
-      setTaxCgst(b.taxes.cgst ?? 2.5);
-      setTaxSgst(b.taxes.sgst ?? 2.5);
-      setTaxDiscountRule(b.taxes.discountRule || 'Standard');
-      setTaxRoundOff(b.taxes.roundOffTotal ?? true);
-      setTaxPricesInclude(b.taxes.pricesIncludeTax ?? false);
-    }
-  }, [selectedTaxBranchId, branches]);
-
-  // Handle GST change and auto split CGST/SGST
-  const handleGstPercentChange = (val: number) => {
-    setTaxGstPercent(val);
-    const half = parseFloat((val / 2).toFixed(2));
-    setTaxCgst(half);
-    setTaxSgst(half);
-  };
-
-  // Save changes for selected branch's taxes
-  const handleSaveTaxSettings = () => {
-    const b = branches.find((br) => br._id === selectedTaxBranchId);
-    if (!b) return;
-
-    const updatedBranch: Branch = {
-      ...b,
-      taxes: {
-        cgst: taxCgst,
-        sgst: taxSgst,
-        serviceCharge: taxServiceCharge,
-        gstPercentage: taxGstPercent,
-        discountRule: taxDiscountRule,
-        roundOffTotal: taxRoundOff,
-        pricesIncludeTax: taxPricesInclude,
-      },
-    };
-
-    updateBranch(updatedBranch);
-  };
-
-  const handleResetTaxForm = () => {
-    const b = branches.find((br) => br._id === selectedTaxBranchId) || branches[0];
-    if (b && b.taxes) {
-      setTaxGstPercent(b.taxes.gstPercentage ?? 5);
-      setTaxServiceCharge(b.taxes.serviceCharge ?? 0);
-      setTaxCgst(b.taxes.cgst ?? 2.5);
-      setTaxSgst(b.taxes.sgst ?? 2.5);
-      setTaxDiscountRule(b.taxes.discountRule || 'Standard');
-      setTaxRoundOff(b.taxes.roundOffTotal ?? true);
-      setTaxPricesInclude(b.taxes.pricesIncludeTax ?? false);
-    }
-  };
-
-  // =========================================================================
-  // STATE: RECEIPT & PRINTER CONFIGURATION
-  // =========================================================================
-  const [selectedReceiptBranchId, setSelectedReceiptBranchId] = useState<string>(
-    currentBranch?._id || (branches[0]?._id ?? '')
-  );
-
-  const [invoicePrefix, setInvoicePrefix] = useState<string>('INV-');
-  const [receiptHeaderText, setReceiptHeaderText] = useState<string>(
-    'Welcome to Arabian Mandhi!'
-  );
-  const [receiptFooterText, setReceiptFooterText] = useState<string>(
-    'Thank you for visiting! Please come again.'
-  );
-  const [printRestaurantLogo, setPrintRestaurantLogo] = useState<boolean>(false);
-  const [autoPrintOnCheckout, setAutoPrintOnCheckout] = useState<boolean>(true);
-  const [useThermalFormat, setUseThermalFormat] = useState<boolean>(true);
-  const [paperWidth, setPaperWidth] = useState<string>('80mm');
-
-  // Load receipt settings when selectedReceiptBranchId changes
-  useEffect(() => {
-    const b = branches.find((br) => br._id === selectedReceiptBranchId) || branches[0];
-    if (b) {
-      const rs = b.receiptSettings;
-      setInvoicePrefix(rs?.invoicePrefix ?? 'INV-');
-      setReceiptHeaderText(rs?.headerText ?? 'Welcome to Arabian Mandhi!');
-      setReceiptFooterText(rs?.footerText ?? 'Thank you for visiting! Please come again.');
-      setPrintRestaurantLogo(rs?.printLogo ?? false);
-      setAutoPrintOnCheckout(rs?.autoPrintOnCheckout ?? true);
-      setUseThermalFormat(rs?.useThermalFormat ?? true);
-      setPaperWidth(rs?.paperWidth ?? '80mm');
-    }
-  }, [selectedReceiptBranchId, branches]);
-
-  const handleSaveReceiptSettings = () => {
-    const b = branches.find((br) => br._id === selectedReceiptBranchId);
-    if (!b) return;
-
-    const updatedBranch: Branch = {
-      ...b,
-      receiptSettings: {
-        invoicePrefix,
-        headerText: receiptHeaderText,
-        footerText: receiptFooterText,
-        printLogo: printRestaurantLogo,
-        autoPrintOnCheckout,
-        useThermalFormat,
-        paperWidth,
-      },
-    };
-
-    updateBranch(updatedBranch);
-  };
-
-  const handleResetReceiptForm = () => {
-    const b = branches.find((br) => br._id === selectedReceiptBranchId) || branches[0];
-    if (b) {
-      const rs = b.receiptSettings;
-      setInvoicePrefix(rs?.invoicePrefix ?? 'INV-');
-      setReceiptHeaderText(rs?.headerText ?? 'Welcome to Arabian Mandhi!');
-      setReceiptFooterText(rs?.footerText ?? 'Thank you for visiting! Please come again.');
-      setPrintRestaurantLogo(rs?.printLogo ?? false);
-      setAutoPrintOnCheckout(rs?.autoPrintOnCheckout ?? true);
-      setUseThermalFormat(rs?.useThermalFormat ?? true);
-      setPaperWidth(rs?.paperWidth ?? '80mm');
-    }
-  };
 
   // Quick settings state matching footer
   const [defaultBranchId, setDefaultBranchId] = useState<string>(
@@ -398,50 +264,57 @@ export const BranchConfig: React.FC = () => {
     setShowPassword(true);
   };
 
-  const handleSaveUser = (e: React.FormEvent) => {
+  const handleSaveUser = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!personName.trim()) return;
 
-    if (editingUserId) {
-      const existing = staffList.find((s) => s._id === editingUserId);
-      if (existing) {
-        const updatedStaff: Staff = {
-          ...existing,
-          name: personName.trim(),
-          designation: designation.trim() || 'Front Desk Receptionist',
-          role: userRole,
-          branchAccess,
-          email: userEmail.trim() || existing.email,
-          phone: userPhone.trim() || existing.phone,
-          username: username.trim() || existing.username,
-          password: password.trim() || existing.password,
-        };
-        updateUser(updatedStaff);
-        setSharingStaff(updatedStaff);
-      }
-    } else {
-      const createdStaff: Omit<Staff, '_id'> = {
-        employeeCode: `EMP-${Math.floor(100 + Math.random() * 900)}`,
-        name: personName.trim(),
-        designation: designation.trim() || 'Front Desk Receptionist (POS)',
-        role: userRole,
-        branchId: currentBranch?._id || (branches[0]?._id ?? ''),
-        branchAccess,
-        email: userEmail.trim() || `${username.trim() || 'user'}@arabianmandi.com`,
-        phone: userPhone.trim() || '+91 9876543200',
-        active: true,
-        username: username.trim() || `reception.${Math.floor(100 + Math.random() * 900)}`,
-        password: password.trim() || 'Mandi@POS123',
-      };
-      addUser(createdStaff);
-      const createdWithId: any = {
-        ...createdStaff,
-        _id: `staff-${Date.now()}`,
-      };
-      setSharingStaff(createdWithId);
-    }
+    const matchedBranch = branches.find((b) => b.name === branchAccess || b._id === branchAccess);
+    const targetBranchId = matchedBranch?._id || currentBranch?._id || (branches[0]?._id ?? '');
 
-    setIsUserModalOpen(false);
+    try {
+      if (editingUserId) {
+        const existing = staffList.find((s) => s._id === editingUserId);
+        if (existing) {
+          const updatedStaff: Staff = {
+            ...existing,
+            name: personName.trim(),
+            designation: designation.trim() || 'Front Desk Receptionist',
+            role: userRole,
+            branchId: targetBranchId,
+            branchAccess,
+            email: userEmail.trim() || existing.email,
+            phone: userPhone.trim() || existing.phone,
+            username: username.trim() || existing.username,
+            password: password.trim() || existing.password,
+          };
+          await updateUser(editingUserId, updatedStaff);
+          setSharingStaff(updatedStaff);
+        }
+      } else {
+        const createdStaff: Omit<Staff, '_id'> = {
+          employeeCode: `EMP-${Math.floor(100 + Math.random() * 900)}`,
+          name: personName.trim(),
+          designation: designation.trim() || 'Front Desk Receptionist (POS)',
+          role: userRole,
+          branchId: targetBranchId,
+          branchAccess,
+          email: userEmail.trim() || `${username.trim() || 'user'}@arabianmandi.com`,
+          phone: userPhone.trim() || '+91 9876543200',
+          active: true,
+          username: username.trim() || `reception.${Math.floor(100 + Math.random() * 900)}`,
+          password: password.trim() || 'Mandi@POS123',
+        };
+        await addUser(createdStaff);
+        const createdWithId: any = {
+          ...createdStaff,
+          _id: `staff-${Date.now()}`,
+        };
+        setSharingStaff(createdWithId);
+      }
+      setIsUserModalOpen(false);
+    } catch (err: any) {
+      alert(err.message || 'Failed to save user to backend server. Username might already exist.');
+    }
   };
 
   const handleShareCredentials = (st: Staff) => {
@@ -482,8 +355,7 @@ export const BranchConfig: React.FC = () => {
     );
   });
 
-  const selectedBranchObject =
-    branches.find((br) => br._id === selectedTaxBranchId) || branches[0];
+
 
   return (
     <div className="flex-1 overflow-y-auto bg-slate-50 min-h-[calc(100vh-4rem)] p-6 space-y-6">
@@ -551,30 +423,6 @@ export const BranchConfig: React.FC = () => {
             </button>
 
             <button
-              onClick={() => setActiveSettingsTab('TAX')}
-              className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-xs font-extrabold transition-all text-left shadow-sm cursor-pointer ${
-                activeSettingsTab === 'TAX'
-                  ? 'bg-red-600 text-white shadow-red-600/20'
-                  : 'bg-white hover:bg-slate-100 text-slate-700 border border-slate-200/80'
-              }`}
-            >
-              <FileSpreadsheet className="w-4 h-4" />
-              <span>Tax & Billing</span>
-            </button>
-
-            <button
-              onClick={() => setActiveSettingsTab('PRINTER')}
-              className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-xs font-bold transition-all text-left cursor-pointer ${
-                activeSettingsTab === 'PRINTER'
-                  ? 'bg-red-600 text-white shadow-sm'
-                  : 'bg-white hover:bg-slate-100 text-slate-700 border border-slate-200/80'
-              }`}
-            >
-              <Printer className="w-4 h-4" />
-              <span>Receipt & Printer</span>
-            </button>
-
-            <button
               onClick={() => setActiveSettingsTab('NOTIFICATIONS')}
               className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-xs font-bold transition-all text-left cursor-pointer ${
                 activeSettingsTab === 'NOTIFICATIONS'
@@ -590,269 +438,6 @@ export const BranchConfig: React.FC = () => {
 
         {/* Right Content Panel */}
         <div className="flex-1 min-w-0 w-full space-y-6">
-          {/* =================================================================
-              TAB 3: TAX & BILLING (PER-BRANCH CONFIGURATION MATCHING SCREENSHOT)
-          ================================================================= */}
-          {activeSettingsTab === 'TAX' && (
-            <div className="space-y-6">
-              {/* Top Header matching screenshot */}
-              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-                <div>
-                  <h2 className="text-xl font-extrabold text-slate-900">Tax & Billing</h2>
-                  <p className="text-xs text-slate-500 mt-1">
-                    Configure tax & billing options below for individual branches.
-                  </p>
-                </div>
-
-                {/* Cancel and Save Changes buttons matching image */}
-                <div className="flex items-center gap-3 self-end sm:self-auto">
-                  <button
-                    type="button"
-                    onClick={handleResetTaxForm}
-                    className="px-4 py-2.5 rounded-xl border border-slate-300 hover:bg-slate-100 text-slate-700 font-extrabold text-xs transition-all cursor-pointer"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    type="button"
-                    onClick={handleSaveTaxSettings}
-                    className="px-5 py-2.5 bg-red-600 hover:bg-red-700 text-white font-extrabold text-xs rounded-xl shadow-md transition-all flex items-center gap-1.5 cursor-pointer"
-                  >
-                    <Save className="w-4 h-4" />
-                    <span>Save Changes</span>
-                  </button>
-                </div>
-              </div>
-
-              {/* Individual Branch Selector Bar */}
-              <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-3">
-                <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
-                  <div>
-                    <label className="text-xs font-extrabold uppercase tracking-wider text-red-600 flex items-center gap-1.5">
-                      <Building2 className="w-4 h-4" />
-                      <span>Select Branch to Assign Taxes</span>
-                    </label>
-                    <p className="text-[11px] text-slate-500 mt-0.5">
-                      Each individual branch can maintain separate GST, CGST, SGST, and service charge rates.
-                    </p>
-                  </div>
-
-                  {selectedBranchObject && (
-                    <div className="flex items-center gap-2 bg-slate-100 px-3 py-1.5 rounded-xl border border-slate-200 font-mono text-[11px] text-slate-700">
-                      <span>GSTIN:</span>
-                      <strong className="text-slate-900">{selectedBranchObject.gst}</strong>
-                    </div>
-                  )}
-                </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                  {branches.map((br) => (
-                    <button
-                      key={br._id}
-                      onClick={() => setSelectedTaxBranchId(br._id)}
-                      className={`p-3.5 rounded-xl border text-left transition-all cursor-pointer ${
-                        selectedTaxBranchId === br._id
-                          ? 'bg-red-50 border-red-500 shadow-sm'
-                          : 'bg-white border-slate-200 hover:bg-slate-50'
-                      }`}
-                    >
-                      <div className="flex items-center justify-between">
-                        <span className="font-extrabold text-xs text-slate-900 block truncate">
-                          {br.name.replace('Arabian Mandi – ', '').replace('Arabian Mandi - ', '')}
-                        </span>
-                        {selectedTaxBranchId === br._id && (
-                          <span className="w-2 h-2 rounded-full bg-red-600 shrink-0" />
-                        )}
-                      </div>
-                      <span className="text-[10px] text-slate-400 font-mono block mt-1">
-                        {br.branchCode} • GST: {br.taxes?.gstPercentage ?? ((br.taxes?.cgst || 2.5) + (br.taxes?.sgst || 2.5))}%
-                      </span>
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              {/* Main Tax & Billing Form Card matching screenshot precisely */}
-              <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-6">
-                {/* 2x2 Grid matching screenshot */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
-                  {/* GST Percentage (%) */}
-                  <div>
-                    <label className="block text-xs font-bold text-slate-700 mb-2">
-                      GST Percentage (%)
-                    </label>
-                    <input
-                      type="number"
-                      step="0.5"
-                      min="0"
-                      max="28"
-                      value={taxGstPercent}
-                      onChange={(e) => handleGstPercentChange(parseFloat(e.target.value) || 0)}
-                      className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 bg-slate-50/70 text-xs font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-red-600"
-                    />
-                  </div>
-
-                  {/* Service Charge (%) */}
-                  <div>
-                    <label className="block text-xs font-bold text-slate-700 mb-2">
-                      Service Charge (%)
-                    </label>
-                    <input
-                      type="number"
-                      step="1"
-                      min="0"
-                      max="20"
-                      value={taxServiceCharge}
-                      onChange={(e) => setTaxServiceCharge(parseFloat(e.target.value) || 0)}
-                      className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 bg-slate-50/70 text-xs font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-red-600"
-                    />
-                  </div>
-
-                  {/* CGST (%) */}
-                  <div>
-                    <label className="block text-xs font-bold text-slate-700 mb-2">
-                      CGST (%)
-                    </label>
-                    <input
-                      type="number"
-                      step="0.25"
-                      min="0"
-                      max="14"
-                      value={taxCgst}
-                      onChange={(e) => setTaxCgst(parseFloat(e.target.value) || 0)}
-                      className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 bg-slate-50/70 text-xs font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-red-600"
-                    />
-                  </div>
-
-                  {/* SGST (%) */}
-                  <div>
-                    <label className="block text-xs font-bold text-slate-700 mb-2">
-                      SGST (%)
-                    </label>
-                    <input
-                      type="number"
-                      step="0.25"
-                      min="0"
-                      max="14"
-                      value={taxSgst}
-                      onChange={(e) => setTaxSgst(parseFloat(e.target.value) || 0)}
-                      className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 bg-slate-50/70 text-xs font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-red-600"
-                    />
-                  </div>
-
-                  {/* Discount Rules dropdown matching screenshot */}
-                  <div className="sm:col-span-2">
-                    <label className="block text-xs font-bold text-slate-700 mb-2">
-                      Discount Rules
-                    </label>
-                    <select
-                      value={taxDiscountRule}
-                      onChange={(e) => setTaxDiscountRule(e.target.value)}
-                      className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 bg-slate-50/70 text-xs font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-red-600 cursor-pointer"
-                    >
-                      <option value="Standard">Standard</option>
-                      <option value="Staff Discount Allowed (10%)">
-                        Staff Discount Allowed (10%)
-                      </option>
-                      <option value="Manager Approval Required (>15%)">
-                        Manager Approval Required (&gt;15%)
-                      </option>
-                      <option value="No Discounts Allowed">No Discounts Allowed</option>
-                    </select>
-                  </div>
-                </div>
-
-                {/* Checkboxes matching screenshot exactly */}
-                <div className="pt-4 border-t border-slate-100 space-y-4">
-                  {/* Checkbox 1: Round Off Total Amount */}
-                  <label className="flex items-start gap-3 cursor-pointer select-none">
-                    <input
-                      type="checkbox"
-                      checked={taxRoundOff}
-                      onChange={(e) => setTaxRoundOff(e.target.checked)}
-                      className="w-4 h-4 mt-0.5 rounded text-red-600 focus:ring-red-600 border-slate-300 cursor-pointer"
-                    />
-                    <div>
-                      <p className="text-xs font-extrabold text-slate-900">
-                        Round Off Total Amount
-                      </p>
-                      <p className="text-xs text-slate-500">
-                        Automatically round bill totals to nearest whole number.
-                      </p>
-                    </div>
-                  </label>
-
-                  {/* Checkbox 2: Prices Include Tax */}
-                  <label className="flex items-start gap-3 cursor-pointer select-none">
-                    <input
-                      type="checkbox"
-                      checked={taxPricesInclude}
-                      onChange={(e) => setTaxPricesInclude(e.target.checked)}
-                      className="w-4 h-4 mt-0.5 rounded text-red-600 focus:ring-red-600 border-slate-300 cursor-pointer"
-                    />
-                    <div>
-                      <p className="text-xs font-extrabold text-slate-900">
-                        Prices Include Tax
-                      </p>
-                      <p className="text-xs text-slate-500">
-                        Menu prices already include GST/Taxes.
-                      </p>
-                    </div>
-                  </label>
-                </div>
-              </div>
-
-              {/* Order-Type Specific Tax Assignment Matrix (Dine-in / Takeaway / Delivery) */}
-              <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
-                <div>
-                  <h3 className="font-extrabold text-sm text-slate-900">
-                    Order-Type Tax Breakdown for {selectedBranchObject?.name}
-                  </h3>
-                  <p className="text-xs text-slate-500 mt-0.5">
-                    Individual branch order modes can apply specific GST rates.
-                  </p>
-                </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                  <div className="p-4 rounded-xl bg-slate-50 border border-slate-200">
-                    <span className="text-[11px] font-extrabold text-slate-500 uppercase">
-                      Dine-In Orders
-                    </span>
-                    <div className="flex items-center justify-between mt-2">
-                      <span className="font-extrabold text-slate-900 text-sm">Restaurant GST</span>
-                      <span className="font-mono text-xs font-bold bg-white px-2.5 py-1 rounded border border-slate-200 text-red-600">
-                        {taxGstPercent}% ({taxCgst}% + {taxSgst}%)
-                      </span>
-                    </div>
-                  </div>
-
-                  <div className="p-4 rounded-xl bg-slate-50 border border-slate-200">
-                    <span className="text-[11px] font-extrabold text-slate-500 uppercase">
-                      Takeaway / Parcel
-                    </span>
-                    <div className="flex items-center justify-between mt-2">
-                      <span className="font-extrabold text-slate-900 text-sm">Counter Parcel</span>
-                      <span className="font-mono text-xs font-bold bg-white px-2.5 py-1 rounded border border-slate-200 text-red-600">
-                        {taxGstPercent}% GST
-                      </span>
-                    </div>
-                  </div>
-
-                  <div className="p-4 rounded-xl bg-slate-50 border border-slate-200">
-                    <span className="text-[11px] font-extrabold text-slate-500 uppercase">
-                      Swiggy / Zomato Delivery
-                    </span>
-                    <div className="flex items-center justify-between mt-2">
-                      <span className="font-extrabold text-slate-900 text-sm">Aggregator GST</span>
-                      <span className="font-mono text-xs font-bold bg-white px-2.5 py-1 rounded border border-slate-200 text-slate-700">
-                        5% (Reverse Charge)
-                      </span>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
 
           {/* =================================================================
               TAB 1: USER MANAGEMENT
@@ -1231,229 +816,15 @@ export const BranchConfig: React.FC = () => {
             </div>
           )}
 
-          {/* =================================================================
-              TAB 4: RECEIPT & PRINTER (CONFIG & PREVIEW MATCHING SCREENSHOT)
-          ================================================================= */}
-          {activeSettingsTab === 'PRINTER' && (
-            <div className="space-y-6">
-              {/* Top Header matching screenshot */}
-              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-                <div>
-                  <h2 className="text-xl font-extrabold text-slate-900">Receipt &amp; Printer</h2>
-                  <p className="text-xs text-slate-500 mt-1">
-                    Configure receipt &amp; printer options below.
-                  </p>
-                </div>
-
-                {/* Cancel and Save Changes buttons matching image */}
-                <div className="flex items-center gap-3 self-end sm:self-auto">
-                  <button
-                    type="button"
-                    onClick={handleResetReceiptForm}
-                    className="px-4 py-2.5 rounded-xl border border-slate-300 hover:bg-slate-100 text-slate-700 font-extrabold text-xs transition-all cursor-pointer"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    type="button"
-                    onClick={handleSaveReceiptSettings}
-                    className="px-5 py-2.5 bg-red-600 hover:bg-red-700 text-white font-extrabold text-xs rounded-xl shadow-md transition-all flex items-center gap-1.5 cursor-pointer"
-                  >
-                    <Save className="w-4 h-4" />
-                    <span>Save Changes</span>
-                  </button>
-                </div>
-              </div>
-
-              {/* Branch selector pills so settings can be saved per branch */}
-              <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex flex-wrap items-center justify-between gap-3">
-                <div className="flex items-center gap-2">
-                  <Printer className="w-4 h-4 text-red-600" />
-                  <span className="text-xs font-extrabold text-slate-800">
-                    Active Branch:
-                  </span>
-                </div>
-                <div className="flex items-center gap-2 flex-wrap">
-                  {branches.map((br) => (
-                    <button
-                      key={br._id}
-                      type="button"
-                      onClick={() => setSelectedReceiptBranchId(br._id)}
-                      className={`px-3.5 py-1.5 rounded-xl text-xs font-extrabold transition-all cursor-pointer ${
-                        selectedReceiptBranchId === br._id
-                          ? 'bg-red-600 text-white shadow-sm'
-                          : 'bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200'
-                      }`}
-                    >
-                      {br.name.replace('Arabian Mandi – ', '').replace('Arabian Mandi - ', '')}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              {/* Two Column Layout matching screenshot */}
-              <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
-                {/* Left Column: Form Controls (6 cols) */}
-                <div className="lg:col-span-6 space-y-6 bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
-                  {/* Invoice Prefix */}
-                  <div>
-                    <label className="block text-xs font-bold text-slate-700 mb-2">
-                      Invoice Prefix
-                    </label>
-                    <input
-                      type="text"
-                      value={invoicePrefix}
-                      onChange={(e) => setInvoicePrefix(e.target.value)}
-                      placeholder="INV-"
-                      className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 bg-slate-50/70 text-xs font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-red-600"
-                    />
-                  </div>
-
-                  {/* Receipt Header Text */}
-                  <div>
-                    <label className="block text-xs font-bold text-slate-700 mb-2">
-                      Receipt Header Text
-                    </label>
-                    <textarea
-                      rows={3}
-                      value={receiptHeaderText}
-                      onChange={(e) => setReceiptHeaderText(e.target.value)}
-                      placeholder="Welcome to Arabian Mandhi!"
-                      className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 bg-slate-50/70 text-xs font-semibold text-slate-900 focus:outline-none focus:ring-2 focus:ring-red-600 resize-none"
-                    />
-                  </div>
-
-                  {/* Receipt Footer Text */}
-                  <div>
-                    <label className="block text-xs font-bold text-slate-700 mb-2">
-                      Receipt Footer Text
-                    </label>
-                    <textarea
-                      rows={3}
-                      value={receiptFooterText}
-                      onChange={(e) => setReceiptFooterText(e.target.value)}
-                      placeholder="Thank you for visiting! Please come again."
-                      className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 bg-slate-50/70 text-xs font-semibold text-slate-900 focus:outline-none focus:ring-2 focus:ring-red-600 resize-none"
-                    />
-                  </div>
-
-                  {/* Checkboxes matching image */}
-                  <div className="space-y-3.5 pt-2">
-                    <label className="flex items-center gap-3 cursor-pointer select-none">
-                      <input
-                        type="checkbox"
-                        checked={printRestaurantLogo}
-                        onChange={(e) => setPrintRestaurantLogo(e.target.checked)}
-                        className="w-4 h-4 rounded text-red-600 accent-red-600 focus:ring-red-600 border-slate-300 cursor-pointer"
-                      />
-                      <span className="text-xs font-bold text-slate-800">
-                        Print Restaurant Logo
-                      </span>
-                    </label>
-
-                    <label className="flex items-center gap-3 cursor-pointer select-none">
-                      <input
-                        type="checkbox"
-                        checked={autoPrintOnCheckout}
-                        onChange={(e) => setAutoPrintOnCheckout(e.target.checked)}
-                        className="w-4 h-4 rounded text-red-600 accent-red-600 focus:ring-red-600 border-slate-300 cursor-pointer"
-                      />
-                      <span className="text-xs font-bold text-slate-800">
-                        Auto Print on Checkout
-                      </span>
-                    </label>
-
-                    <label className="flex items-center gap-3 cursor-pointer select-none">
-                      <input
-                        type="checkbox"
-                        checked={useThermalFormat}
-                        onChange={(e) => setUseThermalFormat(e.target.checked)}
-                        className="w-4 h-4 rounded text-red-600 accent-red-600 focus:ring-red-600 border-slate-300 cursor-pointer"
-                      />
-                      <span className="text-xs font-bold text-slate-800">
-                        Use Thermal Printer Format
-                      </span>
-                    </label>
-                  </div>
-
-                  {/* Paper Width */}
-                  <div className="pt-2">
-                    <label className="block text-xs font-bold text-slate-700 mb-2">
-                      Paper Width
-                    </label>
-                    <input
-                      type="text"
-                      value={paperWidth}
-                      onChange={(e) => setPaperWidth(e.target.value)}
-                      placeholder="e.g. 80mm"
-                      className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 bg-slate-50/70 text-xs font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-red-600"
-                    />
-                  </div>
-                </div>
-
-                {/* Right Column: RECEIPT PREVIEW matching screenshot card */}
-                <div className="lg:col-span-6 bg-slate-50/90 border border-slate-200 rounded-2xl p-6 sm:p-10 flex flex-col items-center justify-center min-h-[460px] shadow-sm">
-                  <span className="text-xs font-extrabold text-slate-400 uppercase tracking-widest mb-6">
-                    RECEIPT PREVIEW
-                  </span>
-
-                  <div className="w-full max-w-[300px] bg-white rounded-lg shadow-md border border-slate-200/80 p-6 font-mono text-xs text-slate-800 space-y-3">
-                    {printRestaurantLogo && (
-                      <div className="flex justify-center pb-1">
-                        <div className="w-9 h-9 rounded-full bg-red-600 text-white flex items-center justify-center font-bold text-xs tracking-tight shadow-sm">
-                          LOGO
-                        </div>
-                      </div>
-                    )}
-
-                    <div className="text-center font-bold text-sm text-slate-900 leading-snug">
-                      {receiptHeaderText || 'Welcome to Arabian Mandhi!'}
-                    </div>
-
-                    <div className="border-b border-dashed border-slate-300 py-1" />
-
-                    <div className="text-left text-xs font-semibold text-slate-700">
-                      Order: {invoicePrefix || 'INV-'}1001
-                    </div>
-
-                    <div className="space-y-1.5 text-xs text-slate-700 pt-1">
-                      <div className="flex justify-between">
-                        <span>1x Chicken Mandhi</span>
-                        <span>₹350</span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span>2x Pepsi</span>
-                        <span>₹100</span>
-                      </div>
-                    </div>
-
-                    <div className="border-b border-dashed border-slate-300 py-1" />
-
-                    <div className="flex justify-between font-extrabold text-xs text-slate-900 pt-1">
-                      <span>Total:</span>
-                      <span>₹450</span>
-                    </div>
-
-                    <div className="text-center text-[11px] text-slate-600 pt-3 leading-relaxed">
-                      {receiptFooterText || 'Thank you for visiting! Please come again.'}
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
-
           {activeSettingsTab !== 'USERS' &&
-            activeSettingsTab !== 'BRANCH' &&
-            activeSettingsTab !== 'TAX' &&
-            activeSettingsTab !== 'PRINTER' && (
+            activeSettingsTab !== 'BRANCH' && (
               <div className="bg-white p-12 rounded-2xl border border-slate-200 shadow-sm text-center space-y-3">
                 <Building2 className="w-10 h-10 text-red-600 mx-auto" />
                 <h3 className="font-extrabold text-lg text-slate-900">
                   {activeSettingsTab === 'NOTIFICATIONS' && 'Restaurant Alert & Email Notification Rules'}
                 </h3>
                 <p className="text-xs text-slate-500 max-w-md mx-auto">
-                  Select <strong>Tax & Billing</strong>, <strong>User Management</strong>, <strong>Receipt & Printer</strong>, or <strong>Branch Management</strong> on the left sidebar to configure your restaurant preferences.
+                  Select <strong>User Management</strong> or <strong>Branch Management</strong> on the left sidebar to configure your restaurant preferences.
                 </p>
               </div>
             )}

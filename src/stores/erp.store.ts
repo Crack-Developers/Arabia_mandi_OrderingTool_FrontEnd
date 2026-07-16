@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { persist } from 'zustand/middleware';
 import type {
   Staff,
   UserRole,
@@ -12,14 +13,7 @@ import type {
   SyncQueueItem,
   Printer,
 } from '../types/erp.types';
-import {
-  MOCK_STAFF,
-  MOCK_BRANCHES,
-  MOCK_SECTIONS,
-  MOCK_TABLES,
-  MOCK_CATEGORIES,
-  MOCK_MENU_ITEMS,
-} from '../constants/mockData';
+import { MOCK_STAFF } from '../constants/mockData';
 import {
   authApi,
   branchApi,
@@ -36,6 +30,10 @@ export interface ERPState {
   activeRole?: UserRole;
   isAuthenticated: boolean;
   activeScreen: string;
+  previousScreenBeforePrinterRouting?: string;
+  printerMappingPrinterId: string | null;
+  posViewMode?: 'TABLES' | 'ORDERING';
+  showLiveOrdersOnly: boolean;
   branches: Branch[];
   currentBranch: Branch;
   branchFilterId: string;
@@ -61,16 +59,20 @@ export interface ERPState {
   loginWithApi: (pin: string, role?: any) => Promise<boolean>;
   logout: () => void;
   setActiveScreen: (screen: string) => void;
+  openPrinterRouting: (printerId: string) => void;
+  closePrinterRouting: () => void;
+  setShowLiveOrdersOnly: (val: boolean) => void;
   setBranchFilterId: (branchId: string) => void;
   setCurrentBranch: (branchId: string) => void;
   setSelectedTable: (tableId: string) => void;
+  setPosViewMode: (mode: 'TABLES' | 'ORDERING') => void;
   setSelectedCategory: (categoryId: string) => void;
   setSearchQuery: (query: string) => void;
   setOfflineMode: (offline: boolean) => void;
 
   fetchBranches: () => Promise<void>;
   fetchTables: (branchId?: string) => Promise<void>;
-  fetchMenuData: () => Promise<void>;
+  fetchMenuData: (branchId?: string) => Promise<void>;
   fetchStaffList: () => Promise<void>;
   fetchPrinters: (branchId?: string) => Promise<void>;
   scanLANPrinters: () => Promise<Printer[]>;
@@ -88,6 +90,8 @@ export interface ERPState {
 
   addTable: (table: Partial<Table>) => void;
   updateTableStatus: (tableId: string, status: any) => void;
+  updateTableName: (tableId: string, tableNumber: string) => Promise<void>;
+  updateTableDetails: (tableId: string, data: { tableNumber?: string; capacity?: number }) => Promise<void>;
   openReservationModal: (tableId: string) => void;
   closeReservationModal: () => void;
   createReservation: (...args: any[]) => void;
@@ -100,6 +104,8 @@ export interface ERPState {
 
   toggleMenuItemAvailability: (itemId: string) => void;
   addMenuItem: (item: Partial<MenuItem>) => void;
+  updateMenuItem: (id: string, updates: Partial<MenuItem>) => Promise<void>;
+  deleteMenuItem: (id: string) => Promise<void>;
   addCategory: (name: string) => Promise<MenuCategory>;
 
   openPrintModal: (type?: string, data?: any) => void;
@@ -108,9 +114,16 @@ export interface ERPState {
   addItemToOrder: (item: MenuItem, variantIdx: number, addons?: any[], notes?: string) => void;
   updateOrderItemQty: (itemIdx: number, delta: number) => void;
   removeOrderItem: (itemIdx: number) => void;
-  generateKOT: () => void;
+  holdOrder: (tableId?: string) => void;
+  cancelOrder: () => void;
+  generateKOT: (withPrint?: boolean) => void;
+  isSettling: boolean;
+  settlementError: string | null;
+  settlementSuccess: string | null;
+  settleOrder: (payment: { cash: number; card: number; upi: number; other?: number }) => Promise<void>;
+  // Legacy aliases kept for backwards compat — both delegate to settleOrder
   generateBill: () => void;
-  processPayment: (payment: { cash?: number; card?: number; upi?: number }) => void;
+  processPayment: (payment?: { cash?: number; card?: number; upi?: number; other?: number }) => void;
 
   markNotificationRead: (id: string) => void;
   triggerSyncQueue: () => void;
@@ -123,20 +136,86 @@ export interface ERPState {
 
 // API base is handled by api.service.ts
 
-export const useERPStore = create<ERPState>((set, get) => ({
+/**
+ * Reconstructs kotPrinted flags on order items by cross-checking existing KOTs.
+ * Uses menuItemId for matching — NOT item._id — because Mongoose assigns new
+ * subdocument _ids to items copied into kots[].items, so _id comparison fails.
+ */
+function reconstructKotPrinted(order: any): any {
+  if (!order?.kots?.length || !order?.items?.length) return order;
+
+  // Collect all menuItemIds that appear in any previous KOT
+  const alreadyPrintedMenuIds = new Set<string>();
+  for (const kot of order.kots) {
+    for (const kotItem of kot.items || []) {
+      const menuId = String(kotItem.menuItemId || '');
+      if (menuId && menuId !== 'undefined') alreadyPrintedMenuIds.add(menuId);
+    }
+  }
+
+  const updatedItems = order.items.map((item: any) => {
+    if (item.kotPrinted) return item; // already flagged, skip
+    const menuId = String(item.menuItemId || '');
+    return alreadyPrintedMenuIds.has(menuId) ? { ...item, kotPrinted: true } : item;
+  });
+
+  return { ...order, items: updatedItems };
+}
+
+const syncOrderToBackend = async (order: any, get: any) => {
+
+  try {
+    const { orderApi } = await import('../services/api.service');
+    const branch = get().currentBranch;
+    const table = get().tables.find((t: any) => t._id === order.tableId);
+    
+    const res = await orderApi.syncLocal({
+      ...order,
+      branchId: order.branchId || branch?._id,
+      tableNumber: order.tableNumber || table?.tableNumber || 'TBL',
+      staffId: order.staffId || get().currentUser?._id,
+    });
+    if (res?._id && get().activeOrders[order.tableId]) {
+      useERPStore.setState((state) => {
+        const current = state.activeOrders[order.tableId];
+        if (!current) return state;
+        return {
+          activeOrders: {
+            ...state.activeOrders,
+            [order.tableId]: {
+              ...current,
+              _id: res._id,
+              dbOrderId: res._id,
+            },
+          },
+        };
+      });
+    }
+  } catch (err) {
+    console.error('Failed to sync local order to backend:', err);
+  }
+};
+
+export const useERPStore = create<ERPState>()(
+  persist(
+    (set, get) => ({
   currentUser: null,
   activeRole: undefined,
   isAuthenticated: false,
   activeScreen: 'POS_WORKSPACE',
-  branches: MOCK_BRANCHES,
-  currentBranch: MOCK_BRANCHES[0] || { _id: '', name: '', branchCode: '', address: '', phone: '', gst: '', taxes: { cgst: 0, sgst: 0, serviceCharge: 0 }, timings: '', status: 'Active' as const },
+  previousScreenBeforePrinterRouting: undefined,
+  printerMappingPrinterId: null,
+  posViewMode: 'TABLES',
+  showLiveOrdersOnly: false,
+  branches: [],
+  currentBranch: { _id: '', name: '', branchCode: '', address: '', phone: '', gst: '', taxes: { cgst: 0, sgst: 0, serviceCharge: 0 }, timings: '', status: 'Active' as const },
   branchFilterId: 'ALL',
-  sections: MOCK_SECTIONS,
-  tables: MOCK_TABLES,
-  selectedTableId: MOCK_TABLES[0]?._id || '',
-  categories: MOCK_CATEGORIES,
+  sections: [],
+  tables: [],
+  selectedTableId: '',
+  categories: [],
   selectedCategory: 'ALL',
-  menuItems: MOCK_MENU_ITEMS,
+  menuItems: [],
   searchQuery: '',
   activeOrders: {},
   notifications: [
@@ -152,6 +231,9 @@ export const useERPStore = create<ERPState>((set, get) => ({
   isOfflineMode: false,
   syncQueue: [],
   isSyncing: false,
+  isSettling: false,
+  settlementError: null,
+  settlementSuccess: null,
   staffList: MOCK_STAFF,
   printers: [],
   discoveredPrinters: [],
@@ -200,7 +282,9 @@ export const useERPStore = create<ERPState>((set, get) => ({
 
   loginWithApi: async (username: string, password: string) => {
     try {
-      const result = await authApi.login(username, password);
+      const cleanUser = (username || '').trim();
+      const cleanPass = (password || '').trim();
+      const result = await authApi.login(cleanUser, cleanPass);
       const { token, user } = result;
       setToken(token);
       // Map backend user to Staff shape
@@ -213,7 +297,7 @@ export const useERPStore = create<ERPState>((set, get) => ({
         pin: '',
         branchIds: user.branchAccess === 'All Branches' ? ['ALL'] : [user.branchId],
         active: true,
-        username,
+        username: cleanUser,
         employeeCode: user.employeeCode || '',
         designation: user.designation,
         branchAccess: user.branchAccess,
@@ -224,30 +308,65 @@ export const useERPStore = create<ERPState>((set, get) => ({
         isAuthenticated: true,
         activeScreen: user.role === 'Super Admin' ? 'ADMIN_ANALYTICS' : 'POS_WORKSPACE',
       });
-      // Hydrate data from API after login
+      // Hydrate branch-scoped data — always pass branchId so data is isolated per branch
+      const bId = user.branchId as string | undefined;
       get().fetchBranches();
-      get().fetchMenuData();
+      get().fetchTables(bId);
+      get().fetchMenuData(bId);   // ← scoped menu
       get().fetchStaffList();
-      get().fetchPrinters();
+      get().fetchPrinters(bId);   // ← must pass branchId to avoid cross-branch leakage
       return true;
-    } catch {
-      // Fallback to mock login
-      return get().login(username, password as any);
+    } catch (err: any) {
+      throw err;
     }
   },
 
   logout: () => {
     clearToken();
-    set({ isAuthenticated: false, currentUser: null, activeRole: undefined });
+    localStorage.removeItem('petpooja_erp_session');
+    set({
+      isAuthenticated: false,
+      currentUser: null,
+      activeRole: undefined,
+      activeScreen: 'POS_WORKSPACE',
+      previousScreenBeforePrinterRouting: undefined,
+      printerMappingPrinterId: null,
+      // ── Clear ALL branch-scoped data so it never leaks into the next session ──
+      printers: [],
+      discoveredPrinters: [],
+      tables: [],
+      sections: [],
+      activeOrders: {},
+      selectedTableId: '',
+    });
   },
 
   setActiveScreen: (screen) => set({ activeScreen: screen }),
+  openPrinterRouting: (printerId) =>
+    set((state) => ({
+      printerMappingPrinterId: printerId,
+      previousScreenBeforePrinterRouting:
+        state.activeScreen === 'PRINTER_ROUTING'
+          ? state.previousScreenBeforePrinterRouting || 'POS_WORKSPACE'
+          : state.activeScreen,
+      activeScreen: 'PRINTER_ROUTING',
+    })),
+  closePrinterRouting: () =>
+    set((state) => ({
+      activeScreen: state.previousScreenBeforePrinterRouting || 'POS_WORKSPACE',
+      previousScreenBeforePrinterRouting: undefined,
+      printerMappingPrinterId: null,
+    })),
 
   setBranchFilterId: (branchId) => {
     if (branchId !== 'ALL') {
       const b = get().branches.find((br) => br._id === branchId);
       if (b) {
         set({ branchFilterId: branchId, currentBranch: b });
+        // Reload ALL branch-scoped data for the newly selected branch
+        get().fetchTables(branchId);
+        get().fetchPrinters(branchId);
+        get().fetchMenuData();
         return;
       }
     }
@@ -257,9 +376,15 @@ export const useERPStore = create<ERPState>((set, get) => ({
   setCurrentBranch: (branchId) => {
     const b = get().branches.find((br) => br._id === branchId) || get().branches[0];
     set({ currentBranch: b, branchFilterId: branchId });
+    // Reload ALL branch-scoped data for the new branch
+    get().fetchTables(branchId);
+    get().fetchPrinters(branchId);
+    get().fetchMenuData();
   },
 
   setSelectedTable: (tableId) => set({ selectedTableId: tableId }),
+  setPosViewMode: (mode) => set({ posViewMode: mode }),
+  setShowLiveOrdersOnly: (val) => set({ showLiveOrdersOnly: val }),
   setSelectedCategory: (categoryId) => set({ selectedCategory: categoryId }),
   setSearchQuery: (query) => set({ searchQuery: query }),
   setOfflineMode: (offline) => set({ isOfflineMode: offline }),
@@ -267,62 +392,48 @@ export const useERPStore = create<ERPState>((set, get) => ({
   fetchBranches: async () => {
     try {
       const data = await branchApi.getAll();
-      const list = Array.isArray(data) ? data : (data?.branches || data?.data || []);
-      if (list.length > 0) {
-        set({ branches: list, currentBranch: list[0] });
-      }
+      // Backend returns { success: true, data: [...] }
+      const list = Array.isArray(data) ? data : (data?.data || data?.branches || []);
+      const current = get().currentBranch;
+      const updatedCurrent = list.find((b: any) => b._id === current?._id) || list[0] || null;
+      set({ branches: list, currentBranch: updatedCurrent });
     } catch {
-      // keep mock fallback
+      // keep mock fallback on error
     }
   },
 
   fetchTables: async (branchId?: string) => {
     try {
       const data = await tableApi.getAll(branchId);
-      const list = Array.isArray(data) ? data : (data?.tables || []);
-      if (list.length > 0) set({ tables: list, selectedTableId: list[0]?._id || '' });
+      const list = Array.isArray(data) ? data : (data?.data || data?.tables || []);
+      set({
+        tables: list,
+        selectedTableId: list.length > 0 ? (get().selectedTableId && list.some((t: any) => t._id === get().selectedTableId) ? get().selectedTableId : list[0]._id) : ''
+      });
     } catch {
-      // keep mock fallback
+      set({ tables: [], selectedTableId: '' });
     }
   },
 
-  fetchMenuData: async () => {
+  fetchMenuData: async (branchId?: string) => {
     try {
+      const resolvedBranchId = branchId || get().currentUser?.branchIds?.[0];
       const [catData, itemData] = await Promise.all([
-        menuApi.getAllCategories(),
-        menuApi.getAllItems(),
+        menuApi.getAllCategories(resolvedBranchId),
+        menuApi.getAllItems(resolvedBranchId),
       ]);
-      const cats = Array.isArray(catData) ? catData : (catData?.categories || []);
-      const items = Array.isArray(itemData) ? itemData : (itemData?.menuItems || []);
-      if (cats.length > 0) {
-        set({ categories: cats });
-      } else {
-        set({
-          categories: [
-            { _id: 'cat-mandi', name: 'Mandi Meat Platters' },
-            { _id: 'cat-starters', name: 'Arabian Starters & Grills' },
-            { _id: 'cat-desserts', name: 'Kunafa & Desserts' },
-            { _id: 'cat-beverages', name: 'Beverages & Mocktails' },
-          ],
-        });
-      }
-      if (items.length > 0) set({ menuItems: items });
+      const cats  = Array.isArray(catData)  ? catData  : (catData?.data  || catData?.categories || []);
+      const items = Array.isArray(itemData) ? itemData : (itemData?.data || itemData?.menuItems  || []);
+      set({ categories: cats, menuItems: items });
     } catch {
-      set({
-        categories: [
-          { _id: 'cat-mandi', name: 'Mandi Meat Platters' },
-          { _id: 'cat-starters', name: 'Arabian Starters & Grills' },
-          { _id: 'cat-desserts', name: 'Kunafa & Desserts' },
-          { _id: 'cat-beverages', name: 'Beverages & Mocktails' },
-        ],
-      });
+      set({ categories: [], menuItems: [] });
     }
   },
 
   fetchStaffList: async () => {
     try {
       const data = await staffApi.getAll();
-      const list = Array.isArray(data) ? data : (data?.staff || []);
+      const list = Array.isArray(data) ? data : (data?.data || data?.staff || []);
       if (list.length > 0) set({ staffList: list });
     } catch {
       // keep mock fallback
@@ -332,7 +443,7 @@ export const useERPStore = create<ERPState>((set, get) => ({
   fetchPrinters: async (branchId?: string) => {
     try {
       const data = await printerApi.getAll(branchId);
-      const list = Array.isArray(data) ? data : (data?.printers || []);
+      const list = Array.isArray(data) ? data : (data?.data || data?.printers || []);
       set({ printers: list });
     } catch {
       // Keep existing printers
@@ -341,67 +452,47 @@ export const useERPStore = create<ERPState>((set, get) => ({
 
   scanLANPrinters: async () => {
     try {
-      const data = await printerApi.scanLAN();
-      const list = Array.isArray(data) ? data : (data?.printers || []);
-      if (list.length > 0) {
-        set({ discoveredPrinters: list });
-        return list;
-      }
+      const currentBranchId = get().currentBranch?._id || (get().currentUser?.branchId as string | undefined);
+      const data = await printerApi.scanLAN(currentBranchId);
+      const foundPrinters = data?.foundPrinters ?? (Array.isArray(data) ? data : []);
+      const allSaved      = data?.savedPrinters ?? [];
+      // Filter saved printers strictly to current branch only — prevents cross-branch leakage
+      const savedPrinters = currentBranchId
+        ? allSaved.filter((p: any) => p.branchId && String(p.branchId) === String(currentBranchId))
+        : allSaved;
+      set({
+        discoveredPrinters: foundPrinters,
+        printers: savedPrinters.length > 0 ? savedPrinters : get().printers,
+      });
+      return foundPrinters;
     } catch {
       // Offline / LAN discovery fallback
     }
-
-    const mockDiscovered: Printer[] = [
-      {
-        _id: 'lan-prn-1',
-        name: 'EPSON TM-T88VI (Kitchen LAN)',
-        ip: '192.168.1.87',
-        port: 9100,
-        type: 'thermal',
-        connection: 'LAN',
-        status: 'online',
-        sections: [],
-      },
-      {
-        _id: 'lan-prn-2',
-        name: 'POS-80C Thermal (Bar Floor LAN)',
-        ip: '192.168.1.95',
-        port: 9100,
-        type: 'thermal',
-        connection: 'LAN',
-        status: 'online',
-        sections: [],
-      },
-      {
-        _id: 'lan-prn-3',
-        name: 'Star TSP143 (USB/LAN Network)',
-        ip: '192.168.1.102',
-        port: 9100,
-        type: 'thermal',
-        connection: 'USB/LAN',
-        status: 'online',
-        sections: [],
-      },
-    ];
-    set({ discoveredPrinters: mockDiscovered });
-    return mockDiscovered;
+    set({ discoveredPrinters: [] });
+    return [];
   },
+
 
   addPrinter: async (printerData) => {
     try {
-      const created = await printerApi.create(printerData);
+      const branchId = printerData.branchId || get().currentBranch?._id || get().currentUser?.branchId;
+      const created = await printerApi.create({ ...printerData, branchId });
       const newPrinter = created?.printer || created;
       set((state) => ({ printers: [...state.printers, newPrinter] }));
       return newPrinter;
     } catch {
+      const chosenDuty = printerData.duty || 'KOT';
+      const chosenRole = printerData.role || (chosenDuty === 'RECEIPT' ? 'cashier' : chosenDuty === 'BOTH' ? 'both' : 'kitchen');
       const newPrinter: Printer = {
         _id: `prn-${Date.now()}`,
         name: printerData.name || 'Network Printer',
         ip: printerData.ip || '192.168.1.200',
         port: printerData.port || 9100,
         type: printerData.type || 'thermal',
+        duty: chosenDuty,
+        role: chosenRole,
         sections: printerData.sections || ['ALL'],
-        branchId: printerData.branchId || get().currentBranch._id,
+        branchId: printerData.branchId || get().currentBranch?._id || get().currentUser?.branchId,
         isActive: true,
       };
       set((state) => ({ printers: [...state.printers, newPrinter] }));
@@ -409,25 +500,27 @@ export const useERPStore = create<ERPState>((set, get) => ({
     }
   },
 
-  updatePrinter: async (id, updates) => {
-    try { await printerApi.update(id, updates); } catch { /* offline */ }
+  updatePrinter: async (idOrPrinter: any, updates?: any) => {
+    const id = typeof idOrPrinter === 'string' ? idOrPrinter : idOrPrinter?._id;
+    const patch = typeof idOrPrinter === 'string' ? updates : idOrPrinter;
+    try { await printerApi.update(id, patch); } catch { /* offline */ }
     set((state) => ({
-      printers: state.printers.map((p) => (p._id === id ? { ...p, ...updates } : p)),
+      printers: state.printers.map((p) => (p._id === id ? { ...p, ...patch } : p)),
     }));
     return get().printers.find((p) => p._id === id)!;
   },
 
   deletePrinter: async (id) => {
-    try { await printerApi.delete(id); } catch { /* offline */ }
+    const branchId = get().currentBranch?._id || (get().currentUser?.branchId as string | undefined);
+    try { await printerApi.delete(id, branchId); } catch { /* offline */ }
     set((state) => ({ printers: state.printers.filter((p) => p._id !== id) }));
   },
 
   testPrintJob: async (printerId) => {
     try {
       await printerApi.printJob(printerId, {
-        type: 'TEST_PRINT',
+        type: 'TEST',
         timestamp: new Date().toISOString(),
-        message: 'Wireless Printer Test Connection Successful',
       });
       return true;
     } catch {
@@ -437,21 +530,62 @@ export const useERPStore = create<ERPState>((set, get) => ({
 
   printKOTBySection: async (kot, tableId) => {
     const { printers, currentBranch } = get();
+    const order = get().activeOrders[tableId];
     if (!printers || printers.length === 0) return;
 
-    // Group order items by section
-    const itemsBySection: Record<string, any[]> = {};
+    // Helper to check if a printer is permitted to print KOT tickets
+    const canPrintKOT = (p: Printer) => p.isActive !== false && p.duty !== 'RECEIPT' && p.role !== 'cashier' && p.role !== 'receipt';
+
+    // 1. Try sending directly to our new high-speed backend LAN multi-printer dispatcher
+    try {
+      const { printerApi } = await import('../services/api.service');
+      await printerApi.dispatchKOT({
+        ...kot,
+        tableId,
+        tableNumber: order?.tableNumber,
+        orderId: order?.dbOrderId || order?._id,
+        orderNumber: order?.orderNumber,
+        branchId: order?.branchId || currentBranch._id,
+        branchName: currentBranch.name,
+      });
+      return; // Backend successfully split & dispatched over LAN to KOT-permitted printers!
+    } catch {
+      // If backend dispatcher unavailable or offline, fall back to client-side grouping
+    }
+
+    // Group order items strictly by assigned target printer
+    const itemsByPrinterId: Record<string, any[]> = {};
+
     kot.items?.forEach((it: any) => {
-      const itemSection = it.sections?.[0] || 'ALL';
-      if (!itemsBySection[itemSection]) itemsBySection[itemSection] = [];
-      itemsBySection[itemSection].push(it);
+      // 1. If dish has a specific printerId assigned, verify that printer allows KOT and route exclusively
+      if (it.printerId && it.printerId !== '' && it.printerId !== 'none') {
+        const targetP = printers.find((p) => p._id === it.printerId && canPrintKOT(p));
+        if (targetP) {
+          if (!itemsByPrinterId[targetP._id]) itemsByPrinterId[targetP._id] = [];
+          itemsByPrinterId[targetP._id].push(it);
+          return;
+        }
+      }
+
+      // 2. Otherwise, check if a KOT-eligible printer explicitly matches the dish's section
+      const itemSection = it.sections?.[0] || it.section;
+      if (itemSection && itemSection !== 'ALL') {
+        const sectionPrinter = printers.find((p) => canPrintKOT(p) && p.sections?.includes(itemSection));
+        if (sectionPrinter) {
+          if (!itemsByPrinterId[sectionPrinter._id]) itemsByPrinterId[sectionPrinter._id] = [];
+          itemsByPrinterId[sectionPrinter._id].push(it);
+          return;
+        }
+      }
+
+      // 3. If dish has NO printerId assigned and no section printer matches,
+      // DO NOT automatically print it to printers[0] or any Receipt Only printer!
     });
 
-    // Send section-specific KOT to matching printer
-    for (const [section, items] of Object.entries(itemsBySection)) {
-      const targetPrinter =
-        printers.find((p) => p.sections?.includes(section) || p.sections?.includes('ALL')) ||
-        printers[0];
+    // Send KOT jobs only to the designated KOT-eligible printers
+    for (const [printerId, items] of Object.entries(itemsByPrinterId)) {
+      if (!items || items.length === 0) continue;
+      const targetPrinter = printers.find((p) => p._id === printerId && canPrintKOT(p));
       if (!targetPrinter) continue;
 
       const payload = {
@@ -459,15 +593,15 @@ export const useERPStore = create<ERPState>((set, get) => ({
         tableId,
         kotNumber: kot.kotNumber,
         timestamp: kot.timestamp,
-        section,
+        section: items[0]?.sections?.[0] || 'Kitchen',
         branchName: currentBranch.name,
         items,
       };
 
       try {
+        const { printerApi } = await import('../services/api.service');
         await printerApi.printJob(targetPrinter._id, payload);
       } catch {
-        // Queue for offline sync retry
         set((state) => ({
           syncQueue: [
             ...state.syncQueue,
@@ -505,7 +639,7 @@ export const useERPStore = create<ERPState>((set, get) => ({
         timings: branchData.timings || '11:00 AM - 11:30 PM',
         managerName: branchData.managerName || '',
         managerId: branchData.managerId || '',
-        sections: branchData.sections || [{ name: 'Main Dining Hall', floor: 'Ground Floor', tablesCount: 14 }],
+        sections: branchData.sections || [],
       };
       set((state) => ({ branches: [...state.branches, newBranch], currentBranch: newBranch }));
       return newBranch;
@@ -523,8 +657,12 @@ export const useERPStore = create<ERPState>((set, get) => ({
   },
 
   deleteBranch: async (id) => {
-    try { await branchApi.delete(id); } catch { /* offline fallback */ }
-    set((state) => ({ branches: state.branches.filter((b) => b._id !== id) }));
+    try {
+      await branchApi.delete(id);
+      set((state) => ({ branches: state.branches.filter((b) => b._id !== id) }));
+    } catch (err: any) {
+      alert(err.message || 'Failed to delete branch. At least one branch must remain.');
+    }
   },
 
   toggleBranchStatus: (id) => {
@@ -535,9 +673,8 @@ export const useERPStore = create<ERPState>((set, get) => ({
     }));
   },
 
-  addTable: (tableData) => {
-    const newTable: Table = {
-      _id: `tbl-${Date.now()}`,
+  addTable: async (tableData) => {
+    const payload = {
       branchId: get().currentBranch._id,
       sectionId: tableData.sectionId || 'sec-1',
       sectionName: tableData.sectionName || 'Dining Hall',
@@ -545,15 +682,57 @@ export const useERPStore = create<ERPState>((set, get) => ({
       capacity: tableData.capacity || 4,
       status: 'Available',
     };
-    set((state) => ({
-      tables: [...state.tables, newTable],
-    }));
+    try {
+      const created = await tableApi.create(payload);
+      const newTable = created?.data || created?.table || created;
+      set((state) => {
+        const nextState: any = { tables: [...state.tables, newTable] };
+        if (!state.selectedTableId) {
+          nextState.selectedTableId = newTable._id;
+        }
+        return nextState;
+      });
+    } catch {
+      const fallbackTable: Table = {
+        _id: `tbl-${Date.now()}`,
+        ...payload,
+        status: (payload.status || 'Available') as Table['status'],
+      };
+      set((state) => ({ tables: [...state.tables, fallbackTable] }));
+    }
   },
 
-  updateTableStatus: (tableId, status) => {
+  updateTableStatus: async (tableId, status) => {
     set((state) => ({
       tables: state.tables.map((t) => (t._id === tableId ? { ...t, status } : t)),
     }));
+    try {
+      await tableApi.update(tableId, { status });
+    } catch {
+      // offline mode fallback
+    }
+  },
+
+  updateTableName: async (tableId, tableNumber) => {
+    set((state) => ({
+      tables: state.tables.map((t) => (t._id === tableId ? { ...t, tableNumber } : t)),
+    }));
+    try {
+      await tableApi.update(tableId, { tableNumber });
+    } catch {
+      // offline mode fallback
+    }
+  },
+
+  updateTableDetails: async (tableId, data) => {
+    set((state) => ({
+      tables: state.tables.map((t) => (t._id === tableId ? { ...t, ...data } : t)),
+    }));
+    try {
+      await tableApi.update(tableId, data);
+    } catch {
+      // offline mode fallback
+    }
   },
 
   openReservationModal: (tableId) => {
@@ -687,6 +866,8 @@ export const useERPStore = create<ERPState>((set, get) => ({
       addons: itemData.addons || [],
       badge: itemData.badge,
       sections: itemData.sections || ['ALL'],
+      taxRate: itemData.taxRate !== undefined ? Number(itemData.taxRate) : 5,
+      ...(itemData.core != null && { core: itemData.core }),
       available: true,
       active: true,
     };
@@ -697,6 +878,34 @@ export const useERPStore = create<ERPState>((set, get) => ({
     } catch {
       const newItem: MenuItem = { _id: `mi-${Date.now()}`, ...payload, printerId: 'prn-1' };
       set((state) => ({ menuItems: [...state.menuItems, newItem] }));
+    }
+  },
+
+  updateMenuItem: async (id, updates) => {
+    try {
+      await menuApi.updateItem(id, updates);
+      set((state) => ({
+        menuItems: state.menuItems.map((item) => (item._id === id ? { ...item, ...updates } : item)),
+      }));
+    } catch (error) {
+      console.warn('Failed to update menu item', error);
+      set((state) => ({
+        menuItems: state.menuItems.map((item) => (item._id === id ? { ...item, ...updates } : item)),
+      }));
+    }
+  },
+
+  deleteMenuItem: async (id) => {
+    try {
+      await menuApi.deleteItem(id);
+      set((state) => ({
+        menuItems: state.menuItems.filter((item) => item._id !== id),
+      }));
+    } catch (error) {
+      console.warn('Failed to delete menu item', error);
+      set((state) => ({
+        menuItems: state.menuItems.filter((item) => item._id !== id),
+      }));
     }
   },
 
@@ -730,12 +939,23 @@ export const useERPStore = create<ERPState>((set, get) => ({
   },
 
   addItemToOrder: (item, variantIdx, addons = [], notes = '') => {
-    const tableId = get().selectedTableId;
-    if (!tableId) return;
-    const variant = item.variants[variantIdx] || item.variants[0];
-    const order = get().activeOrders[tableId] || {
+    let tableId = get().selectedTableId;
+    if (!tableId) {
+      const allTables = get().tables;
+      if (allTables.length > 0) {
+        tableId = allTables[0]._id;
+        set({ selectedTableId: tableId });
+      } else {
+        return; // No tables exist
+      }
+    }
+    const variant = (item.variants && item.variants[variantIdx]) || (item.variants && item.variants[0]) || { name: 'Standard', price: (item as any).price || 0 };
+    const rawOrder = get().activeOrders[tableId] || {
       orderId: `ord-${Date.now()}`,
       tableId,
+      branchId: get().currentBranch?._id,
+      tableNumber: get().tables.find(t => t._id === tableId)?.tableNumber || 'TBL',
+      staffId: get().currentUser?._id,
       orderNumber: `#ORD-${Math.floor(Math.random() * 9000 + 1000)}`,
       items: [],
       kots: [],
@@ -745,39 +965,50 @@ export const useERPStore = create<ERPState>((set, get) => ({
       total: 0,
       status: 'Active',
     };
+    // Reconstruct kotPrinted flags from KOT history so legacy orders show
+    // correct grey-out state even if the kotPrinted field wasn't set before.
+    const order = reconstructKotPrinted(rawOrder);
+
 
     const newItem = {
       id: `item-${Date.now()}`,
       menuItemId: item._id,
       name: item.name,
       variantName: variant.name,
-      price: variant.price,
+      price: Number(variant.price) || 0,
       quantity: 1,
+      taxRate: (item.taxRate !== undefined && item.taxRate !== null) ? Number(item.taxRate) : 5,
       addons,
       notes,
     };
 
     const newItems = [...order.items, newItem];
-    const subtotal = newItems.reduce(
-      (sum, i) =>
-        sum +
-        i.price * i.quantity +
-        ((i.addons || []).reduce<number>((acc, a: any) => acc + (Number(a.price) || 0), 0)) * i.quantity,
-      0
-    );
-    const cgst = subtotal * 0.025;
-    const sgst = subtotal * 0.025;
+    let subtotal = 0;
+    let totalTax = 0;
+    newItems.forEach((i) => {
+      const itemSubtotal = ((Number(i.price) || 0) + (i.addons || []).reduce((acc: number, a: any) => acc + (Number(a.price) || 0), 0)) * (Number(i.quantity) || 1);
+      subtotal += itemSubtotal;
+      const tRate = (i.taxRate !== undefined && i.taxRate !== null) ? Number(i.taxRate) : 5;
+      totalTax += itemSubtotal * (tRate / 100);
+    });
+
+    const cgst = totalTax / 2;
+    const sgst = totalTax / 2;
     const total = subtotal + cgst + sgst;
+
+    const updatedOrder = { ...order, items: newItems, subtotal, cgst, sgst, total, status: 'Active' };
 
     set((state) => ({
       activeOrders: {
         ...state.activeOrders,
-        [tableId]: { ...order, items: newItems, subtotal, cgst, sgst, total },
+        [tableId]: updatedOrder,
       },
       tables: state.tables.map((t) =>
         t._id === tableId ? { ...t, status: 'Occupied' } : t
       ),
     }));
+
+    syncOrderToBackend(updatedOrder, get);
   },
 
   updateOrderItemQty: (itemIdx, delta) => {
@@ -790,81 +1021,342 @@ export const useERPStore = create<ERPState>((set, get) => ({
       )
       .filter((i) => i.quantity > 0);
 
-    const subtotal = updatedItems.reduce(
-      (sum, i) => sum + i.price * i.quantity,
-      0
-    );
-    const cgst = subtotal * 0.025;
-    const sgst = subtotal * 0.025;
+    let subtotal = 0;
+    let totalTax = 0;
+    updatedItems.forEach((i) => {
+      const itemSubtotal = ((Number(i.price) || 0) + (i.addons || []).reduce((acc: number, a: any) => acc + (Number(a.price) || 0), 0)) * (Number(i.quantity) || 1);
+      subtotal += itemSubtotal;
+      const tRate = (i.taxRate !== undefined && i.taxRate !== null) ? Number(i.taxRate) : 5;
+      totalTax += itemSubtotal * (tRate / 100);
+    });
+
+    const cgst = totalTax / 2;
+    const sgst = totalTax / 2;
     const total = subtotal + cgst + sgst;
 
-    set((state) => ({
-      activeOrders: {
-        ...state.activeOrders,
-        [tableId]: {
-          ...order,
-          items: updatedItems,
-          subtotal,
-          cgst,
-          sgst,
-          total,
-        },
-      },
+    // If all items are removed after KOTs were already generated, mark KOTs as Cancelled
+    const isCancelled = updatedItems.length === 0 && (order.kots || []).length > 0;
+    const kots = (order.kots || []).map((k: any) => ({
+      ...k,
+      status: isCancelled ? 'Cancelled' : 'Modified',
     }));
+
+    const updatedOrder = {
+      ...order,
+      items: updatedItems,
+      kots,
+      status: isCancelled ? 'Cancelled' : order.status,
+      subtotal,
+      cgst,
+      sgst,
+      total,
+    };
+
+    if (isCancelled || updatedItems.length === 0) {
+      const activeOrdersCopy = { ...get().activeOrders };
+      delete activeOrdersCopy[tableId];
+      set((state) => ({
+        activeOrders: activeOrdersCopy,
+        tables: state.tables.map((t) =>
+          t._id === tableId ? { ...t, status: 'Available' } : t
+        ),
+      }));
+    } else {
+      set((state) => ({
+        activeOrders: {
+          ...state.activeOrders,
+          [tableId]: updatedOrder,
+        },
+      }));
+    }
+
+    syncOrderToBackend(updatedOrder, get);
   },
 
   removeOrderItem: (itemIdx) => {
     get().updateOrderItemQty(itemIdx, -999);
   },
 
-  generateKOT: () => {
+  cancelOrder: () => {
     const tableId = get().selectedTableId;
     const order = get().activeOrders[tableId];
-    if (!order || order.items.length === 0) return;
+    if (!order) return;
+
+    const kots = (order.kots || []).map((k: any) => ({ ...k, status: 'Cancelled' }));
+    const updatedOrder = {
+      ...order,
+      status: 'Cancelled',
+      kots,
+    };
+
+    const activeOrdersCopy = { ...get().activeOrders };
+    delete activeOrdersCopy[tableId];
+
+    set((state) => ({
+      activeOrders: activeOrdersCopy,
+      tables: state.tables.map((t) =>
+        t._id === tableId ? { ...t, status: 'Available' } : t
+      ),
+      viewMode: 'TABLES',
+    }));
+
+    syncOrderToBackend(updatedOrder, get);
+  },
+
+  holdOrder: (tableId) => {
+    const targetId = tableId || get().selectedTableId;
+    const order = get().activeOrders[targetId];
+    if (!order) return;
+
+    const updatedOrder = { ...order, status: 'Hold' };
+    set((state) => ({
+      activeOrders: {
+        ...state.activeOrders,
+        [targetId]: updatedOrder,
+      },
+      tables: state.tables.map((t) =>
+        t._id === targetId ? { ...t, status: 'Hold' as const } : t
+      ),
+      posViewMode: 'TABLES',
+    }));
+
+    syncOrderToBackend(updatedOrder, get);
+  },
+
+  generateKOT: (withPrint: boolean = true) => {
+    const tableId = get().selectedTableId;
+    const raw = get().activeOrders[tableId];
+    if (!raw || raw.items.length === 0) return;
+
+    // Reconstruct kotPrinted from KOT history (handles legacy persisted orders)
+    const order = reconstructKotPrinted(raw);
+
+    // Only new (not yet KOT-printed) items count
+    const newItems = order.items.filter((item: any) => !item.kotPrinted);
+    if (newItems.length === 0) return; // nothing new to send
+
+
+    const nextSeq = order.kots.length + 1;
     const newKot = {
       id: `kot-${Date.now()}`,
-      kotNumber: `KOT-${order.kots.length + 1}`,
-      items: order.items,
-      timestamp: new Date().toLocaleTimeString([], {
-        hour: '2-digit',
-        minute: '2-digit',
-      }),
+      kotNumber: `KOT-${nextSeq}`,
+      sequence: nextSeq,
+      items: newItems,   // ← only new items in this KOT record
+      printedAt: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      printedBy: get().currentUser?.name || 'POS Staff',
+      status: 'Active',
+      withPrint,
+    };
+
+    // Mark all current items as printed → they go grey immediately
+    const updatedItems = order.items.map((item) => ({ ...item, kotPrinted: true }));
+    const updatedOrder = {
+      ...order,
+      status: 'Active' as const,
+      items: updatedItems,
+      kots: [...order.kots, newKot],
     };
 
     set((state) => ({
       activeOrders: {
         ...state.activeOrders,
-        [tableId]: { ...order, kots: [...order.kots, newKot] },
+        [tableId]: updatedOrder,
       },
-    }));
-
-    // Trigger wireless printer routing by section
-    get().printKOTBySection(newKot, tableId);
-  },
-
-  generateBill: () => {
-    const tableId = get().selectedTableId;
-    const order = get().activeOrders[tableId];
-    if (!order) return;
-    set((state) => ({
       tables: state.tables.map((t) =>
-        t._id === tableId ? { ...t, status: 'Billing' } : t
+        t._id === tableId ? { ...t, status: 'Occupied' } : t
       ),
     }));
+
+    // Sync to backend
+    (async () => {
+      let backendHandled = false;
+      try {
+        const { orderApi } = await import('../services/api.service');
+        const dbOrderId = order.dbOrderId || order._id;
+        if (dbOrderId && !dbOrderId.startsWith('local-')) {
+          const res = await orderApi.generateKOT(dbOrderId, withPrint);
+          backendHandled = true;
+
+          // ── Sync backend's authoritative item list back to local state ────
+          // The backend knows the definitive kotPrinted state (cross-checks
+          // KOT history for legacy orders). Merge it into the local store.
+          const backendOrder = res?.data?.order;
+          if (backendOrder?.items) {
+            const backendItemMap = new Map(
+              backendOrder.items.map((i: any) => [String(i._id), i])
+            );
+            useERPStore.setState((state) => {
+              const cur = state.activeOrders[tableId];
+              if (!cur) return state;
+              const mergedItems = cur.items.map((localItem: any) => {
+                const backendItem = backendItemMap.get(String(localItem._id || localItem.id));
+                return backendItem ? { ...localItem, kotPrinted: !!(backendItem as any).kotPrinted } : localItem;
+              });
+              return {
+                activeOrders: {
+                  ...state.activeOrders,
+                  [tableId]: { ...cur, items: mergedItems },
+                },
+              };
+            });
+          }
+          return;
+        }
+      } catch {
+        // Non-fatal: backend unreachable
+      }
+
+      if (!backendHandled) {
+        if (withPrint) {
+          get().printKOTBySection(newKot, tableId);
+        }
+        syncOrderToBackend(updatedOrder, get);
+      }
+    })();
   },
 
-  processPayment: () => {
+
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // UNIFIED SETTLEMENT — single atomic action for all 3 settlement paths.
+  // UI is only cleared AFTER the backend confirms order = Completed.
+  // ─────────────────────────────────────────────────────────────────────────
+  settleOrder: async (paymentMethods) => {
     const tableId = get().selectedTableId;
-    set((state) => {
-      const nextOrders = { ...state.activeOrders };
-      delete nextOrders[tableId];
-      return {
-        activeOrders: nextOrders,
-        tables: state.tables.map((t) =>
-          t._id === tableId ? { ...t, status: 'Available' } : t
-        ),
-      };
-    });
+    const order = get().activeOrders[tableId];
+    if (!order || get().isSettling) return;
+
+    const table = get().tables.find((t) => t._id === tableId);
+    const branch = get().currentBranch;
+
+    // Lock UI — prevent double-clicks and show spinner
+    set({ isSettling: true, settlementError: null });
+
+    try {
+      const { orderApi } = await import('../services/api.service');
+
+      // ── Step 1: Sync order to DB ─────────────────────────────────────────
+      // NOTE: api.service request() already unwraps {success, data} envelope,
+      // so syncRes IS the order object directly (not syncRes.data).
+      let dbOrderId = order.dbOrderId || order._id;
+      try {
+        const syncRes = await orderApi.syncLocal({
+          ...order,
+          branchId: order.branchId || branch?._id,
+          tableNumber: order.tableNumber || table?.tableNumber || 'TBL',
+          staffId: order.staffId || get().currentUser?._id,
+        });
+        // syncRes is the unwrapped order object
+        if ((syncRes as any)?._id) dbOrderId = (syncRes as any)._id;
+      } catch (syncErr: any) {
+        // syncLocal failure is non-fatal if we already have a dbOrderId
+        // (e.g. KOT was already synced earlier in this session)
+        console.warn('[settleOrder] syncLocal failed (non-fatal):', syncErr?.message);
+        if (!dbOrderId) throw new Error(`Cannot reach server: ${syncErr?.message || 'Network error'}. Check your connection and retry.`);
+      }
+
+      // ── Step 2: Generate bill (idempotent — safe if already exists) ───────
+      let dbBillId: string | undefined = order.dbBillId;
+      let billNumber: string | undefined = order.billNumber;
+      if (!dbBillId) {
+        // billRes is the unwrapped bill object
+        const billRes = await orderApi.generateBill(
+          dbOrderId,
+          order.branchId || branch?._id || 'BR-MAIN'
+        ) as any;
+        if (!billRes?._id) throw new Error('Bill could not be generated. Please try again.');
+        dbBillId = billRes._id;
+        billNumber = billRes.billNumber;
+      }
+
+      // ── Step 3: Process payment → DB: order=Completed, bill=Paid ─────────
+      await orderApi.processPayment(dbBillId!, {
+        cash:  paymentMethods.cash,
+        card:  paymentMethods.card,
+        upi:   paymentMethods.upi,
+        other: paymentMethods.other || 0,
+      } as any);
+
+      // ── Step 4: [Skipped, was building bill receipt data which is no longer used] ─────────
+
+      // ── Step 5: ONLY NOW clear UI — backend confirmed Completed ───────────
+      set((state) => {
+        const nextOrders = { ...state.activeOrders };
+        delete nextOrders[tableId];
+        return {
+          isSettling: false,
+          settlementError: null,
+          settlementSuccess: null, // will be set below after printer
+          activeOrders: nextOrders,
+          tables: state.tables.map((t) =>
+            t._id === tableId ? { ...t, status: 'Available' } : t
+          ),
+        };
+      });
+
+      // ── Step 6: Send to assigned receipt printer silently ─────────────────
+      let printerOk = false;
+      try {
+        const { printerApi } = await import('../services/api.service');
+        const receiptPrinter = get().printers.find(
+          (p) => p.isActive !== false &&
+            (p.duty === 'RECEIPT' || p.duty === 'BOTH' ||
+             p.role === 'cashier' || p.role === 'both' || p.role === 'receipt')
+        );
+        if (receiptPrinter?._id) {
+          await printerApi.printJob(receiptPrinter._id, {
+            type: 'BILL',
+            tableId: table?._id || tableId,
+            billNumber: billNumber || `BILL-${order.orderNumber}`,
+            branchName: branch.name,
+            subtotal: order.subtotal,
+            cgst: order.cgst,
+            sgst: order.sgst,
+            grandTotal: order.total,
+            paymentStatus: 'Paid',
+            paymentMethods,
+            items: order.items,
+          });
+          printerOk = true;
+        } else {
+          printerOk = true; // no printer configured — not an error
+        }
+      } catch (printErr: any) {
+        console.warn('[settleOrder] Printer send failed (non-fatal):', printErr?.message);
+      }
+
+      // ── Step 7: Show success toast ────────────────────────────────────────
+      const successMsg = printerOk
+        ? `✓ Order settled & receipt sent to printer`
+        : `✓ Order settled (printer unreachable — check printer connection)`;
+      set({ settlementSuccess: successMsg });
+      // Auto-dismiss after 4 seconds
+      setTimeout(() => set({ settlementSuccess: null }), 4000);
+
+    } catch (err: any) {
+      // ── On failure: unlock but DO NOT clear the order ────────────────────
+      const msg = err?.message || 'Settlement failed. Please try again.';
+      console.error('[settleOrder] Failed:', msg, err);
+      set({ isSettling: false, settlementError: msg });
+    }
+  },
+
+  // Legacy wrappers — delegate to settleOrder so old call-sites still work
+  generateBill: async () => {
+    const order = get().activeOrders[get().selectedTableId];
+    if (!order) return;
+    await get().settleOrder({ cash: order.total, card: 0, upi: 0 });
+  },
+
+  processPayment: async (paymentParam) => {
+    const order = get().activeOrders[get().selectedTableId];
+    if (!order) return;
+    const cash  = paymentParam?.cash  ?? (order.paymentMethod === 'Cash' || !order.paymentMethod ? order.total : 0);
+    const card  = paymentParam?.card  ?? (order.paymentMethod === 'Card'  ? order.total : 0);
+    const upi   = paymentParam?.upi   ?? (order.paymentMethod === 'UPI'   ? order.total : 0);
+    const other = paymentParam?.other ?? 0;
+    await get().settleOrder({ cash, card, upi, other });
   },
 
   markNotificationRead: (id) => {
@@ -882,29 +1374,27 @@ export const useERPStore = create<ERPState>((set, get) => ({
   addUser: async (user) => {
     try {
       const created = await staffApi.create(user);
-      const newStaff = created?.staff || created;
+      const newStaff = created?.staff || created?.data || created;
       set((state) => ({ staffList: [...state.staffList, newStaff] }));
-    } catch {
-      const newStaff: Staff = {
-        _id: `stf-${Date.now()}`,
-        name: user.name || 'Staff User',
-        role: user.role || 'Receptionist',
-        phone: user.phone || '',
-        pin: user.pin || '1234',
-        branchIds: user.branchIds || ['br-001'],
-        active: user.active !== undefined ? user.active : true,
-        username: user.username || user.name?.toLowerCase().replace(/\s+/g, ''),
-        employeeCode: user.employeeCode || `EMP-${Date.now()}`,
-      };
-      set((state) => ({ staffList: [...state.staffList, newStaff] }));
+    } catch (err) {
+      console.error('Failed to create user on backend:', err);
+      throw err;
     }
   },
 
-  updateUser: async (id, updates) => {
-    try { await staffApi.update(id, updates); } catch { /* offline */ }
-    set((state) => ({
-      staffList: state.staffList.map((s) => s._id === id ? { ...s, ...updates } : s),
-    }));
+  updateUser: async (idOrStaff: any, updates?: any) => {
+    const id = typeof idOrStaff === 'string' ? idOrStaff : idOrStaff?._id;
+    const patch = typeof idOrStaff === 'string' ? updates : idOrStaff;
+    try {
+      const updated = await staffApi.update(id, patch);
+      const updatedStaff = updated?.staff || updated?.data || updated || patch;
+      set((state) => ({
+        staffList: state.staffList.map((s) => (s._id === id ? { ...s, ...updatedStaff } : s)),
+      }));
+    } catch (err) {
+      console.error('Failed to update user on backend:', err);
+      throw err;
+    }
   },
 
   deleteUser: async (id) => {
@@ -915,4 +1405,18 @@ export const useERPStore = create<ERPState>((set, get) => ({
   resetUserPassword: async (id) => {
     try { await staffApi.resetPassword(id); } catch { /* offline */ }
   },
-}));
+}),
+{
+  name: 'petpooja_erp_session',
+  partialize: (state) => ({
+    currentUser: state.currentUser,
+    activeRole: state.activeRole,
+    isAuthenticated: state.isAuthenticated,
+    activeScreen: state.activeScreen,
+    currentBranch: state.currentBranch,
+    branchFilterId: state.branchFilterId,
+    selectedTableId: state.selectedTableId,
+    activeOrders: state.activeOrders,
+  }),
+})
+);

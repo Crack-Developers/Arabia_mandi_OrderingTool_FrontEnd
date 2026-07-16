@@ -8,10 +8,11 @@ import {
   Settings,
   DatabaseBackup,
   ShieldAlert,
+  PieChart,
 } from 'lucide-react';
 
 export const Sidebar: React.FC = () => {
-  const { activeScreen, setActiveScreen, activeRole, syncQueue } = useERPStore();
+  const { activeScreen, setActiveScreen, setPosViewMode, activeRole, syncQueue } = useERPStore();
 
   const navItems = [
     {
@@ -47,6 +48,13 @@ export const Sidebar: React.FC = () => {
       badge: 'HQ Admin',
     },
     {
+      id: 'ADMIN_DISH_SUMMARY',
+      label: 'Dish Sales Summary',
+      icon: PieChart,
+      roles: ['Super Admin'],
+      badge: 'POV Table',
+    },
+    {
       id: 'SYNC_QUEUE',
       label: 'Offline Sync Engine',
       icon: DatabaseBackup,
@@ -69,7 +77,12 @@ export const Sidebar: React.FC = () => {
             return (
               <button
                 key={item.id}
-                onClick={() => setActiveScreen(item.id as any)}
+                onClick={() => {
+                  if (item.id === 'POS_WORKSPACE' && setPosViewMode) {
+                    setPosViewMode('TABLES');
+                  }
+                  setActiveScreen(item.id as any);
+                }}
                 className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs font-semibold transition-all ${
                   isActive
                     ? 'bg-gradient-to-r from-amber-500/20 to-amber-500/10 text-amber-300 border border-amber-500/30 shadow-sm'
