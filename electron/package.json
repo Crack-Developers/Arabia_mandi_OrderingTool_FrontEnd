@@ -34,6 +34,7 @@
     "appId": "com.petpooja.desktop",
     "productName": "Petpooja POS",
     "asar": true,
+    "publish": null,
     "directories": {
       "output": "dist-electron"
     },
