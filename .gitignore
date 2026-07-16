@@ -22,3 +22,8 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Electron desktop app — do NOT commit these
+electron/node_modules/
+electron/dist-electron/
+electron/package-lock.json

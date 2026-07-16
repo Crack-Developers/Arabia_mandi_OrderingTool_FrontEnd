@@ -1,0 +1,92 @@
+{
+  "name": "petpooja-desktop",
+  "version": "1.0.0",
+  "description": "Petpooja POS Desktop Application — Offline-first branch client",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron . --no-sandbox",
+    "dev": "ELECTRON_DEV=true electron . --no-sandbox",
+    "postinstall": "npx @electron/rebuild -f -w better-sqlite3",
+    "dist": "electron-builder",
+    "dist:win": "electron-builder --win",
+    "dist:mac": "electron-builder --mac",
+    "dist:linux": "electron-builder --linux",
+    "pack": "electron-builder --dir"
+  },
+  "dependencies": {
+    "better-sqlite3": "^9.4.3",
+    "bcryptjs": "^2.4.3",
+    "cors": "^2.8.5",
+    "express": "^4.18.2",
+    "jsonwebtoken": "^9.0.2",
+    "node-fetch": "^2.7.0",
+    "socket.io": "^4.7.4",
+    "uuid": "^9.0.0"
+  },
+  "devDependencies": {
+    "@electron/rebuild": "^3.6.0",
+    "electron": "^28.2.0",
+    "electron-builder": "^24.9.1"
+  },
+  "build": {
+    "appId": "com.petpooja.desktop",
+    "productName": "Petpooja POS",
+    "asar": true,
+    "directories": {
+      "output": "dist-electron"
+    },
+    "files": [
+      "main.js",
+      "preload.js",
+      "local-server/**/*",
+      "node_modules/**/*",
+      "!node_modules/.cache",
+      "!node_modules/.bin"
+    ],
+    "extraResources": [
+      {
+        "from": "../dist",
+        "to": "frontend-dist"
+      }
+    ],
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "ashik-christober",
+        "repo": "Petpooja",
+        "releaseType": "release"
+      }
+    ],
+    "win": {
+      "target": [
+        { "target": "nsis", "arch": ["x64"] },
+        { "target": "portable", "arch": ["x64"] }
+      ],
+      "icon": "assets/icon.png",
+      "requestedExecutionLevel": "asInvoker"
+    },
+    "mac": {
+      "target": [
+        { "target": "dmg", "arch": ["x64", "arm64"] }
+      ],
+      "icon": "assets/icon.png",
+      "category": "public.app-category.business"
+    },
+    "linux": {
+      "target": ["AppImage", "deb"],
+      "icon": "assets/icon.png",
+      "category": "Office"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Petpooja POS"
+    },
+    "dmg": {
+      "title": "Petpooja POS Installer"
+    }
+  }
+}

@@ -3,8 +3,8 @@ name: Build & Release Desktop App
 on:
   push:
     tags:
-      - 'desktop-v*'        # Trigger: git tag desktop-v1.0.0 && git push --tags
-  workflow_dispatch:         # Manual trigger from GitHub Actions UI
+      - 'desktop-v*'
+  workflow_dispatch:
     inputs:
       version:
         description: 'Version label (e.g. 1.0.0)'
@@ -28,88 +28,69 @@ jobs:
     name: Build for ${{ matrix.platform }}
 
     steps:
-      # ── 1. Checkout ──────────────────────────────────────────────────────────
-      - name: Checkout frontend repo
+      # ── 1. Checkout repo (contains both src/ and electron/) ──────────────────
+      - name: Checkout repository
         uses: actions/checkout@v4
 
-      # ── 2. Checkout electron repo (different repo) ────────────────────────
-      - name: Checkout Electron app
-        uses: actions/checkout@v4
-        with:
-          repository: Crack-Developers/Arabia_mandi_OrderingTool_FrontEnd
-          ref: main
-          path: electron-src
-          token: ${{ secrets.GITHUB_TOKEN }}
-
-      # ── 3. Setup Node.js ─────────────────────────────────────────────────────
+      # ── 2. Setup Node.js ──────────────────────────────────────────────────────
       - name: Setup Node.js 20
         uses: actions/setup-node@v4
         with:
           node-version: '20'
 
-      # ── 4. Build React frontend ───────────────────────────────────────────────
+      # ── 3. Build React frontend ───────────────────────────────────────────────
       - name: Install frontend dependencies
         run: npm ci
 
-      - name: Build React frontend (production bundle)
+      - name: Build React frontend
         run: npm run build
 
-      # ── 5. Copy electron source (from this repo's electron/ folder) ──────────
-      - name: Prepare Electron source
-        shell: bash
-        run: |
-          # electron/ folder is at the root of this repo
-          cp -r electron electron-build
-          # Copy the built React dist into electron-build as sibling of frontend/dist
-          mkdir -p electron-build/../frontend/dist
-          cp -r dist electron-build/../frontend/dist
-        working-directory: ${{ github.workspace }}
-
+      # ── 4. Install Electron dependencies (skips node_modules from gitignore) ──
       - name: Install Electron dependencies
         run: npm install
-        working-directory: ${{ github.workspace }}/electron
+        working-directory: electron
 
-      # ── 6. Rebuild better-sqlite3 for Electron ABI ───────────────────────────
+      # ── 5. Rebuild better-sqlite3 for Electron's Node ABI ────────────────────
       - name: Rebuild native modules
         run: npx @electron/rebuild -f -w better-sqlite3
-        working-directory: ${{ github.workspace }}/electron
+        working-directory: electron
 
-      # ── 7. Build installers ──────────────────────────────────────────────────
+      # ── 6. Build platform-specific installer ─────────────────────────────────
       - name: Build Windows installer
         if: matrix.os == 'windows-latest'
         run: npm run dist:win
-        working-directory: ${{ github.workspace }}/electron
+        working-directory: electron
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Build macOS installer
         if: matrix.os == 'macos-latest'
         run: npm run dist:mac
-        working-directory: ${{ github.workspace }}/electron
+        working-directory: electron
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Build Linux installers
         if: matrix.os == 'ubuntu-latest'
         run: npm run dist:linux
-        working-directory: ${{ github.workspace }}/electron
+        working-directory: electron
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      # ── 8. Upload artifacts ──────────────────────────────────────────────────
+      # ── 7. Upload artifacts ───────────────────────────────────────────────────
       - name: Upload installers
         uses: actions/upload-artifact@v4
         with:
           name: petpooja-pos-${{ matrix.platform }}
           path: |
-            ${{ github.workspace }}/electron/dist-electron/*.exe
-            ${{ github.workspace }}/electron/dist-electron/*.dmg
-            ${{ github.workspace }}/electron/dist-electron/*.AppImage
-            ${{ github.workspace }}/electron/dist-electron/*.deb
+            electron/dist-electron/*.exe
+            electron/dist-electron/*.dmg
+            electron/dist-electron/*.AppImage
+            electron/dist-electron/*.deb
           if-no-files-found: warn
           retention-days: 30
 
-  # ── Publish GitHub Release ───────────────────────────────────────────────────
+  # ── Publish all installers to GitHub Releases ────────────────────────────────
   release:
     name: Publish GitHub Release
     needs: build
@@ -123,7 +104,7 @@ jobs:
           path: installers
           merge-multiple: true
 
-      - name: Publish release with installers
+      - name: Publish release
         uses: softprops/action-gh-release@v2
         with:
           name: "Petpooja POS ${{ github.ref_name }}"
@@ -132,22 +113,22 @@ jobs:
 
             Download the installer for your operating system:
 
-            | OS | File | Notes |
-            |----|------|-------|
-            | 🪟 Windows | `PetpoojaPOS Setup *.exe` | Standard installer — double-click to install |
-            | 🪟 Windows | `PetpoojaPOS *.exe` | Portable — no install needed |
-            | 🍎 macOS | `PetpoojaPOS-*.dmg` | Intel + Apple Silicon |
-            | 🐧 Linux | `PetpoojaPOS-*.AppImage` | Double-click to run (no install) |
-            | 🐧 Linux | `petpooja-pos_*.deb` | `sudo dpkg -i <file>` |
+            | OS | File | How to install |
+            |----|------|----------------|
+            | 🪟 **Windows** | `PetpoojaPOS Setup *.exe` | Double-click → Next → Done |
+            | 🪟 **Windows** | `PetpoojaPOS *.exe` *(Portable)* | Run directly — no install |
+            | 🍎 **macOS** | `PetpoojaPOS-*.dmg` | Drag to Applications |
+            | 🐧 **Linux** | `PetpoojaPOS-*.AppImage` | Double-click to run |
+            | 🐧 **Linux** | `petpooja-pos_*.deb` | `sudo dpkg -i <file>` |
 
             ### First-Time Setup
-            1. Install and launch the app
-            2. On first launch, connect to the internet and log in with branch credentials
-            3. The app will download branch data and work **fully offline** from then on
+            1. Install and open the app
+            2. Connect to internet → log in with branch credentials
+            3. App downloads branch data → **works fully offline** from then on
 
-            ### For IT Setup at Branches
-            - Assign the desktop machine a **fixed LAN IP** (e.g. `192.168.1.10`)
-            - Configure the mobile waiter app to connect to this fixed IP
+            ### Branch IT Setup
+            - Assign the desktop machine a **static LAN IP** (e.g. `192.168.1.10`)
+            - Mobile waiter app → enter this IP during setup
           files: installers/**/*
           draft: false
           prerelease: false
