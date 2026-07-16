@@ -84,7 +84,7 @@ jobs:
           name: petpooja-pos-${{ matrix.platform }}
           path: |
             electron/dist-electron/*.exe
-            electron/dist-electron/*.dmg
+            electron/dist-electron/*.zip
             electron/dist-electron/*.AppImage
             electron/dist-electron/*.deb
           if-no-files-found: warn
@@ -117,7 +117,7 @@ jobs:
             |----|------|----------------|
             | 🪟 **Windows** | `PetpoojaPOS Setup *.exe` | Double-click → Next → Done |
             | 🪟 **Windows** | `PetpoojaPOS *.exe` *(Portable)* | Run directly — no install |
-            | 🍎 **macOS** | `PetpoojaPOS-*.dmg` | Drag to Applications |
+            | 🍎 **macOS** | `PetpoojaPOS-*-mac.zip` | Extract → double-click app |
             | 🐧 **Linux** | `PetpoojaPOS-*.AppImage` | Double-click to run |
             | 🐧 **Linux** | `petpooja-pos_*.deb` | `sudo dpkg -i <file>` |
 
