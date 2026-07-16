@@ -191,11 +191,11 @@ export const LoginPage: React.FC = () => {
           )}
 
           {/* Hint for credentials */}
-          <p className="text-[11px] text-slate-400 text-center">
-            {selectedRole === 'Super Admin'
-              ? 'Admin HQ: username=admin / password=Password@123'
-              : 'Enter the Receptionist credentials assigned to your branch by Admin'}
-          </p>
+          {selectedRole === 'Receptionist' && (
+            <p className="text-[11px] text-slate-400 text-center">
+              Enter the Receptionist credentials assigned to your branch by Admin
+            </p>
+          )}
 
           {/* Sign In Button */}
           <button
