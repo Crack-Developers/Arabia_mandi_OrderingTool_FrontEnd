@@ -2,15 +2,17 @@
   "name": "petpooja-desktop",
   "version": "1.0.0",
   "description": "Petpooja POS Desktop Application — Offline-first branch client",
+  "author": "Ashik Christober <ashik@petpooja.com>",
+  "homepage": "https://github.com/Crack-Developers/Arabia_mandi_OrderingTool_FrontEnd",
   "main": "main.js",
   "scripts": {
     "start": "electron . --no-sandbox",
     "dev": "ELECTRON_DEV=true electron . --no-sandbox",
     "postinstall": "npx @electron/rebuild -f -w better-sqlite3",
-    "dist": "electron-builder",
-    "dist:win": "electron-builder --win",
-    "dist:mac": "electron-builder --mac",
-    "dist:linux": "electron-builder --linux",
+    "dist": "electron-builder --publish never",
+    "dist:win": "electron-builder --win --publish never",
+    "dist:mac": "electron-builder --mac --publish never",
+    "dist:linux": "electron-builder --linux --publish never",
     "pack": "electron-builder --dir"
   },
   "dependencies": {
@@ -49,14 +51,6 @@
         "to": "frontend-dist"
       }
     ],
-    "publish": [
-      {
-        "provider": "github",
-        "owner": "ashik-christober",
-        "repo": "Petpooja",
-        "releaseType": "release"
-      }
-    ],
     "win": {
       "target": [
         { "target": "nsis", "arch": ["x64"] },
@@ -75,7 +69,8 @@
     "linux": {
       "target": ["AppImage", "deb"],
       "icon": "assets/icon.png",
-      "category": "Office"
+      "category": "Office",
+      "maintainer": "Ashik Christober <ashik@petpooja.com>"
     },
     "nsis": {
       "oneClick": false,
