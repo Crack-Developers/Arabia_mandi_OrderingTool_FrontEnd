@@ -5,6 +5,9 @@
  */
 
 const getBaseUrl = (): string => {
+  // Electron desktop app: preload.js sets this to http://localhost:3001/api/v1
+  // This is UNDEFINED in all browsers → production web behaviour is unchanged
+  if ((window as any).__ELECTRON_LOCAL_API__) return (window as any).__ELECTRON_LOCAL_API__;
   if (import.meta.env.VITE_API_URL) return import.meta.env.VITE_API_URL;
   return `https://arabia-mandi-orderingtool-backend.onrender.com/api/v1`;
 };
