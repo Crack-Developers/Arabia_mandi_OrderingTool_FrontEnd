@@ -98,7 +98,8 @@ export const BranchConfig: React.FC = () => {
   const [address, setAddress] = useState<string>('');
   const [phone, setPhone] = useState<string>('');
   const [gst, setGst] = useState<string>('');
-  const [timings, setTimings] = useState<string>('');
+  const [startTime, setStartTime] = useState<string>('11:00 AM');
+  const [endTime, setEndTime] = useState<string>('11:30 PM');
   const [managerName, setManagerName] = useState<string>('');
   const [managerId, setManagerId] = useState<string>('');
   const [branchStaffList, setBranchStaffList] = useState<any[]>([]);
@@ -136,7 +137,17 @@ export const BranchConfig: React.FC = () => {
     setAddress(b.address);
     setPhone(b.phone);
     setGst(b.gst || '');
-    setTimings(b.timings || '');
+    let st = '11:00 AM';
+    let et = '11:30 PM';
+    if (b.timings) {
+      const parts = b.timings.split(/[-–]| to /i).map(s => s.trim());
+      if (parts.length >= 2) {
+        st = parts[0];
+        et = parts[1];
+      }
+    }
+    setStartTime(st);
+    setEndTime(et);
     setManagerName(b.managerName || '');
     setManagerId(b.managerId || '');
     setBranchStaffList(b.staffList || []);
@@ -194,7 +205,7 @@ export const BranchConfig: React.FC = () => {
           address: address.trim() || 'Address not provided',
           phone: phone.trim() || '+91 9876543200',
           gst: gst.trim() || existing.gst,
-          timings: timings.trim() || existing.timings,
+          timings: `${startTime.trim()} - ${endTime.trim()}` || existing.timings,
           managerName: managerName.trim() || 'John Doe',
           managerId: managerId.trim() || 'MGR-DEFAULT',
           staffList: branchStaffList,
@@ -209,7 +220,7 @@ export const BranchConfig: React.FC = () => {
         phone: phone.trim() || '+91 9876543200',
         gst: gst.trim() || '36AABCA1234F1Z5',
         taxes: { cgst: 2.5, sgst: 2.5, serviceCharge: 0 },
-        timings: timings.trim() || '11:00 AM – 11:30 PM',
+        timings: `${startTime.trim()} - ${endTime.trim()}` || '11:00 AM – 11:30 PM',
         status: 'Active',
         managerName: managerName.trim() || 'John Doe',
         managerId: managerId.trim() || `MGR-${Math.floor(1000 + Math.random() * 9000)}`,
@@ -1236,17 +1247,61 @@ export const BranchConfig: React.FC = () => {
                     />
                   </div>
 
-                  <div>
-                    <label className="block text-xs font-bold text-slate-700 mb-1.5">
-                      Working Hours
-                    </label>
-                    <input
-                      type="text"
-                      value={timings}
-                      onChange={(e) => setTimings(e.target.value)}
-                      placeholder="11:00 AM – 11:30 PM"
-                      className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 bg-slate-50 text-xs font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-red-600"
-                    />
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <label className="block text-[11px] font-bold text-slate-700 mb-1.5">
+                        Start Time
+                      </label>
+                      <input
+                        type="time"
+                        value={(() => {
+                           const m = startTime.match(/(\d+):(\d+)\s*(AM|PM)/i);
+                           if (!m) return '';
+                           let h = parseInt(m[1]);
+                           if (m[3].toUpperCase() === 'PM' && h < 12) h += 12;
+                           if (m[3].toUpperCase() === 'AM' && h === 12) h = 0;
+                           return `${String(h).padStart(2, '0')}:${m[2]}`;
+                        })()}
+                        onChange={(e) => {
+                           const val = e.target.value;
+                           if (!val) return;
+                           const [h, m] = val.split(':');
+                           let hours = parseInt(h);
+                           const ampm = hours >= 12 ? 'PM' : 'AM';
+                           hours = hours % 12;
+                           hours = hours ? hours : 12;
+                           setStartTime(`${String(hours).padStart(2, '0')}:${m} ${ampm}`);
+                        }}
+                        className="w-full px-3 py-2.5 rounded-xl border border-slate-300 bg-slate-50 text-xs font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-red-600"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[11px] font-bold text-slate-700 mb-1.5">
+                        End Time
+                      </label>
+                      <input
+                        type="time"
+                        value={(() => {
+                           const m = endTime.match(/(\d+):(\d+)\s*(AM|PM)/i);
+                           if (!m) return '';
+                           let h = parseInt(m[1]);
+                           if (m[3].toUpperCase() === 'PM' && h < 12) h += 12;
+                           if (m[3].toUpperCase() === 'AM' && h === 12) h = 0;
+                           return `${String(h).padStart(2, '0')}:${m[2]}`;
+                        })()}
+                        onChange={(e) => {
+                           const val = e.target.value;
+                           if (!val) return;
+                           const [h, m] = val.split(':');
+                           let hours = parseInt(h);
+                           const ampm = hours >= 12 ? 'PM' : 'AM';
+                           hours = hours % 12;
+                           hours = hours ? hours : 12;
+                           setEndTime(`${String(hours).padStart(2, '0')}:${m} ${ampm}`);
+                        }}
+                        className="w-full px-3 py-2.5 rounded-xl border border-slate-300 bg-slate-50 text-xs font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-red-600"
+                      />
+                    </div>
                   </div>
                 </div>
               </div>
