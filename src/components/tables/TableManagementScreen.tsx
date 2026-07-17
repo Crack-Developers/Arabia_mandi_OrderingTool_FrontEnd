@@ -22,7 +22,7 @@ export const TableManagementScreen: React.FC = () => {
     return () => clearInterval(timer);
   }, [checkExpiredReservations]);
 
-  const displaySections =
+  const branchConfigSections =
     currentBranch?.sections && currentBranch.sections.length > 0
       ? currentBranch.sections.map((sec, idx) => ({
           _id: `sec-${idx + 1}`,
@@ -35,6 +35,24 @@ export const TableManagementScreen: React.FC = () => {
           floor: (sec as any).floor || 'Ground Floor',
         }));
 
+  const displaySectionsMap = new Map<string, any>();
+  branchConfigSections.forEach((s) => displaySectionsMap.set(s.name, s));
+
+  // Auto-discover any sections from tables that aren't in branch config
+  tables
+    .filter((t) => !currentBranch?._id || t.branchId === currentBranch._id || !t.branchId)
+    .forEach((t) => {
+      if (t.sectionName && !displaySectionsMap.has(t.sectionName)) {
+        displaySectionsMap.set(t.sectionName, {
+          _id: t.sectionId !== 'NEW' && t.sectionId ? t.sectionId : `dyn-${t.sectionName}`,
+          name: t.sectionName,
+          floor: (t as any).floor || 'Ground Floor',
+        });
+      }
+    });
+
+  const displaySections = Array.from(displaySectionsMap.values());
+
   const [filterSection, setFilterSection] = useState<string>('ALL');
   const [filterFloor, setFilterFloor] = useState<string>('ALL');
 
@@ -43,6 +61,7 @@ export const TableManagementScreen: React.FC = () => {
   const [tableNumber, setTableNumber] = useState('');
   const [sectionOption, setSectionOption] = useState<string>(displaySections[0]?._id || 'NEW');
   const [customSectionName, setCustomSectionName] = useState('');
+  const [customFloorName, setCustomFloorName] = useState('Ground Floor');
   const [capacity, setCapacity] = useState<number>(4);
 
   const branchTables = tables.filter(
@@ -117,6 +136,7 @@ export const TableManagementScreen: React.FC = () => {
                 setTableNumber(`T-${tables.length + 1}`);
                 setSectionOption(displaySections[0]?._id || 'NEW');
                 setCustomSectionName('');
+                setCustomFloorName('Ground Floor');
                 setCapacity(4);
                 setShowAddModal(true);
               }}
@@ -350,6 +370,7 @@ export const TableManagementScreen: React.FC = () => {
                   tableNumber: tableNumber.trim(),
                   sectionId: sectionOption,
                   sectionName: customSectionName.trim(),
+                  floor: customFloorName.trim(),
                   capacity,
                 });
                 setShowAddModal(false);
@@ -378,18 +399,33 @@ export const TableManagementScreen: React.FC = () => {
 
               {/* Custom Section Name Input if "NEW" */}
               {sectionOption === 'NEW' && (
-                <div className="p-3.5 rounded-2xl bg-amber-50/70 border border-amber-200/80 space-y-1.5">
-                  <label className="block text-xs font-extrabold text-amber-900">
-                    New Floor / Section Name
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    placeholder="e.g., 1st Floor Family Hall, Rooftop Terrace"
-                    value={customSectionName}
-                    onChange={(e) => setCustomSectionName(e.target.value)}
-                    className="w-full px-3 py-2 rounded-lg border border-amber-300 bg-white text-sm font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-amber-500"
-                  />
+                <div className="p-3.5 rounded-2xl bg-amber-50/70 border border-amber-200/80 space-y-3">
+                  <div className="space-y-1.5">
+                    <label className="block text-xs font-extrabold text-amber-900">
+                      New Floor Name
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      placeholder="e.g., Ground Floor, 1st Floor, Rooftop"
+                      value={customFloorName}
+                      onChange={(e) => setCustomFloorName(e.target.value)}
+                      className="w-full px-3 py-2 rounded-lg border border-amber-300 bg-white text-sm font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-amber-500"
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="block text-xs font-extrabold text-amber-900">
+                      New Section Name
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      placeholder="e.g., Family Hall, VIP Room, Dining Hall"
+                      value={customSectionName}
+                      onChange={(e) => setCustomSectionName(e.target.value)}
+                      className="w-full px-3 py-2 rounded-lg border border-amber-300 bg-white text-sm font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-amber-500"
+                    />
+                  </div>
                 </div>
               )}
 

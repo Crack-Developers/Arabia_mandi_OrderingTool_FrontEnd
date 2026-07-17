@@ -692,6 +692,7 @@ export const useERPStore = create<ERPState>()(
       branchId: get().currentBranch._id,
       sectionId: tableData.sectionId || 'sec-1',
       sectionName: tableData.sectionName || 'Dining Hall',
+      floor: tableData.floor || 'Ground Floor',
       tableNumber: tableData.tableNumber || `T-${get().tables.length + 1}`,
       capacity: tableData.capacity || 4,
       status: 'Available',
