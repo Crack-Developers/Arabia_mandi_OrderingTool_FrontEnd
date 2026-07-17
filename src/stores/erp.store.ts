@@ -1447,6 +1447,7 @@ export const useERPStore = create<ERPState>()(
            p.role === 'cashier' || p.role === 'both' || p.role === 'receipt')
       );
       
+      let printSuccess = false;
       if (cashierPrinter) {
         await printerApi.printJob(cashierPrinter._id, {
           type: 'BILL',
@@ -1460,8 +1461,16 @@ export const useERPStore = create<ERPState>()(
           paymentStatus: 'Unpaid',
           paymentMethods: { cash: 0, card: 0, upi: 0, other: 0 },
           items: order.items,
+        }).then(() => {
+          printSuccess = true;
         }).catch((e) => console.error('Failed to print bill:', e));
       }
+
+      set({
+        isSettling: false,
+        settlementSuccess: printSuccess ? '✓ Bill generated and printed successfully!' : '✓ Bill generated (no printer configured)'
+      });
+      setTimeout(() => set({ settlementSuccess: null }), 4000);
 
     } catch (err: any) {
       set({ isSettling: false, settlementError: err.message || 'Failed to generate bill.' });
