@@ -2,9 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useERPStore } from '../../stores/erp.store';
 import type { UserRole } from '../../types/erp.types';
 import {
-  UserCheck,
   ShieldCheck,
-  Building2,
   User,
   Lock,
   ArrowRight,
@@ -16,25 +14,21 @@ import { ArabiaMandiLogo } from '../common/ArabiaMandiLogo';
 export const LoginPage: React.FC = () => {
   const { loginWithApi, branches, fetchBranches, setCurrentBranch, setBranchFilterId } = useERPStore();
 
-  const [selectedRole, setSelectedRole] = useState<UserRole>('Super Admin');
+  const [selectedRole] = useState<UserRole>('Super Admin');
   const [username, setUsername] = useState('admin');
   const [password, setPassword] = useState('');
   const [selectedBranchId, setSelectedBranchId] = useState(branches[0]?._id || '');
   const [isLoading, setIsLoading] = useState(false);
-  const [branchesLoading, setBranchesLoading] = useState(branches.length === 0);
   const [error, setError] = useState('');
 
   useEffect(() => {
     let cancelled = false;
     const load = async () => {
-      setBranchesLoading(true);
       await fetchBranches();
-      if (!cancelled) setBranchesLoading(false);
       // Retry once after 3 seconds in case Render cold-start caused a delay
       setTimeout(async () => {
         if (!cancelled && useERPStore.getState().branches.length === 0) {
           await fetchBranches();
-          if (!cancelled) setBranchesLoading(false);
         }
       }, 3000);
     };
@@ -48,17 +42,6 @@ export const LoginPage: React.FC = () => {
       setSelectedBranchId(branches[0]._id);
     }
   }, [branches, selectedBranchId]);
-
-  const handleRoleChange = (role: UserRole) => {
-    setSelectedRole(role);
-    setError('');
-    if (role === 'Super Admin') {
-      setUsername('admin');
-    } else {
-      setUsername('');
-    }
-    setPassword('');
-  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -110,63 +93,14 @@ export const LoginPage: React.FC = () => {
           </p>
         </div>
 
-        {/* Role Selection Tabs */}
-        <div className="bg-slate-900/90 p-1.5 rounded-2xl border border-slate-800 grid grid-cols-2 gap-1.5">
-          <button
-            type="button"
-            onClick={() => handleRoleChange('Receptionist')}
-            className={`flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl text-xs font-bold transition-all ${
-              selectedRole === 'Receptionist'
-                ? 'bg-amber-500 text-slate-950 shadow-md shadow-amber-500/20'
-                : 'text-slate-400 hover:text-white'
-            }`}
-          >
-            <UserCheck className="w-4 h-4" />
-            <span>Receptionist POS</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => handleRoleChange('Super Admin')}
-            className={`flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl text-xs font-bold transition-all ${
-              selectedRole === 'Super Admin'
-                ? 'bg-amber-500 text-slate-950 shadow-md shadow-amber-500/20'
-                : 'text-slate-400 hover:text-white'
-            }`}
-          >
-            <ShieldCheck className="w-4 h-4" />
-            <span>Super Admin HQ</span>
-          </button>
+        {/* Admin Headquarters Badge */}
+        <div className="bg-gradient-to-r from-amber-500/10 via-amber-500/5 to-amber-500/10 border border-amber-500/30 p-3.5 rounded-2xl flex items-center justify-center gap-2.5 shadow-inner">
+          <ShieldCheck className="w-5 h-5 text-amber-400 shrink-0" />
+          <span className="text-xs font-extrabold text-amber-300 tracking-wider uppercase">Super Admin Headquarters</span>
         </div>
 
         {/* Form */}
         <form onSubmit={handleSubmit} className="space-y-4">
-          {/* Branch Selection */}
-          {selectedRole === 'Receptionist' && (
-            <div className="space-y-1.5 animate-fade-in">
-              <label className="text-xs font-bold text-slate-300 flex items-center gap-1.5">
-                <Building2 className="w-3.5 h-3.5 text-amber-400" />
-                <span>Branch Location</span>
-              </label>
-              <select
-                value={selectedBranchId}
-                onChange={(e) => setSelectedBranchId(e.target.value)}
-                className="w-full px-3.5 py-3 rounded-xl bg-slate-900/80 border border-slate-800 text-sm font-semibold text-white focus:outline-none focus:border-amber-500 transition-colors cursor-pointer"
-              >
-                {branchesLoading ? (
-                  <option value="" disabled>Loading branches…</option>
-                ) : branches.length === 0 ? (
-                  <option value="" disabled>No branches found — check your connection</option>
-                ) : (
-                  branches.map((b) => (
-                    <option key={b._id} value={b._id} className="bg-slate-900 text-white">
-                      {b.branchCode} – {b.name.replace('Arabian Mandi – ', '')}
-                    </option>
-                  ))
-                )}
-              </select>
-            </div>
-          )}
 
           {/* Username */}
           <div className="space-y-1.5">
