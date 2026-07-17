@@ -1441,12 +1441,25 @@ export const useERPStore = create<ERPState>()(
 
       // 4. Print the Bill locally (Send to cashier/receipt printer)
       const printers = get().printers || [];
-      const cashierPrinter = printers.find((p) => ['RECEIPT', 'BOTH', 'cashier', 'both'].includes(p.role || p.duty || ''));
+      const cashierPrinter = printers.find(
+        (p) => p.isActive !== false &&
+          (p.duty === 'RECEIPT' || p.duty === 'BOTH' ||
+           p.role === 'cashier' || p.role === 'both' || p.role === 'receipt')
+      );
+      
       if (cashierPrinter) {
         await printerApi.printJob(cashierPrinter._id, {
-          type: 'RECEIPT',
-          orderData: get().activeOrders[tableId],
-          billNumber: billNumber,
+          type: 'BILL',
+          tableId: tableId,
+          billNumber: billNumber || `BILL-${order.orderNumber}`,
+          branchName: branch?.name || 'Arabian Mandi',
+          subtotal: order.subtotal,
+          cgst: order.cgst,
+          sgst: order.sgst,
+          grandTotal: order.total,
+          paymentStatus: 'Unpaid',
+          paymentMethods: { cash: 0, card: 0, upi: 0, other: 0 },
+          items: order.items,
         }).catch((e) => console.error('Failed to print bill:', e));
       }
 
