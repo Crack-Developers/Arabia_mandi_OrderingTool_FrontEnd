@@ -184,17 +184,63 @@ export const PrintModal: React.FC = () => {
                 <span>Subtotal:</span>
                 <span>₹{Number(billData.subtotal || 0).toFixed(2)}</span>
               </div>
-              <div className="flex justify-between text-slate-600">
-                <span>CGST (2.5%):</span>
-                <span>₹{Number(billData.cgst || 0).toFixed(2)}</span>
-              </div>
-              <div className="flex justify-between text-slate-600">
-                <span>SGST (2.5%):</span>
-                <span>₹{Number(billData.sgst || 0).toFixed(2)}</span>
-              </div>
+              {(() => {
+                const taxGroups: Record<number, { taxable: number; tax: number }> = {};
+                let hasTaxes = false;
+                (displayItems || []).forEach((item: any) => {
+                  const qty = item.qty || item.quantity || 1;
+                  const price = (Number(item.price) || 0) * qty;
+                  const rate = Number(item.taxRate) || 0;
+                  if (rate > 0) {
+                    hasTaxes = true;
+                    if (!taxGroups[rate]) taxGroups[rate] = { taxable: 0, tax: 0 };
+                    taxGroups[rate].taxable += price;
+                    taxGroups[rate].tax += (price * rate) / 100;
+                  }
+                });
+
+                if (hasTaxes) {
+                  return Object.keys(taxGroups).map((rateStr) => {
+                    const rate = Number(rateStr);
+                    const halfRate = rate / 2;
+                    const grp = taxGroups[rate];
+                    return (
+                      <React.Fragment key={rateStr}>
+                        <div className="flex justify-between text-slate-600">
+                          <span>{grp.taxable.toFixed(2)}@ CGST@{halfRate} {halfRate}%</span>
+                          <span>₹{(grp.tax / 2).toFixed(2)}</span>
+                        </div>
+                        <div className="flex justify-between text-slate-600">
+                          <span>{grp.taxable.toFixed(2)}@ SGST@{halfRate} {halfRate}%</span>
+                          <span>₹{(grp.tax / 2).toFixed(2)}</span>
+                        </div>
+                      </React.Fragment>
+                    );
+                  });
+                } else if (Number(billData.cgst) > 0 || Number(billData.sgst) > 0) {
+                  return (
+                    <>
+                      <div className="flex justify-between text-slate-600">
+                        <span>CGST:</span>
+                        <span>₹{Number(billData.cgst || 0).toFixed(2)}</span>
+                      </div>
+                      <div className="flex justify-between text-slate-600">
+                        <span>SGST:</span>
+                        <span>₹{Number(billData.sgst || 0).toFixed(2)}</span>
+                      </div>
+                    </>
+                  );
+                }
+                return null;
+              })()}
               <div className="flex justify-between font-extrabold text-sm pt-1 border-t border-slate-200">
-                <span>GRAND TOTAL:</span>
-                <span>₹{Number(billData.grandTotal || billData.total || 0).toFixed(2)}</span>
+                <span className="text-xs uppercase text-slate-500">
+                  {billData.paymentStatus === 'Paid' || orderData?.status === 'Completed' ? 'Paid' : 'Not Paid'}
+                </span>
+                <div className="flex gap-2">
+                  <span>GRAND TOTAL</span>
+                  <span>₹{Number(billData.grandTotal || billData.total || 0).toFixed(2)}</span>
+                </div>
               </div>
               {billData.paymentStatus && (
                 <div className="flex justify-between text-slate-500 text-[10px]">
