@@ -18,6 +18,7 @@ import {
   ChevronDown,
   Printer,
   BookmarkCheck,
+  Receipt,
 } from 'lucide-react';
 
 export const ReceptionDashboard: React.FC = () => {
@@ -1252,8 +1253,8 @@ export const ReceptionDashboard: React.FC = () => {
                       </div>
                     </div>
 
-                    {/* Settle — direct, no modal */}
-                    <div className="grid grid-cols-2 gap-1.5">
+                    {/* Middle row: Cancel & Print Bill */}
+                    <div className="grid grid-cols-2 gap-1.5 mb-1.5">
                       <button
                         onClick={() => useERPStore.getState().cancelOrder()}
                         disabled={isSettling}
@@ -1262,13 +1263,24 @@ export const ReceptionDashboard: React.FC = () => {
                         Cancel
                       </button>
                       <button
+                        onClick={() => useERPStore.getState().generateBill()}
+                        disabled={isSettling || activeOrder.items.length === 0}
+                        className="py-2 rounded bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold transition-all shadow-sm cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed flex items-center justify-center gap-1.5"
+                      >
+                        <Receipt className="w-3.5 h-3.5" /> Print Bill
+                      </button>
+                    </div>
+
+                    {/* Bottom row: Settle */}
+                    <div className="w-full">
+                      <button
                         onClick={handleOpenPayment}
                         disabled={isSettling}
-                        className="py-2.5 rounded bg-[#be1e2d] hover:bg-[#a61927] text-white text-sm font-extrabold transition-all shadow-md cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                        className="w-full py-2.5 rounded bg-[#be1e2d] hover:bg-[#a61927] text-white text-sm font-extrabold transition-all shadow-md cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed flex items-center justify-center gap-2"
                       >
                         {isSettling ? (
-                          <><span className="inline-block w-3.5 h-3.5 border-2 border-white/40 border-t-white rounded-full animate-spin" />Settling…</>
-                        ) : '💳 Settle'}
+                          <><span className="inline-block w-3.5 h-3.5 border-2 border-white/40 border-t-white rounded-full animate-spin" />Processing…</>
+                        ) : '💳 Settle / Pay'}
                       </button>
                     </div>
                   </div>

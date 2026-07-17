@@ -1386,9 +1386,73 @@ export const useERPStore = create<ERPState>()(
 
   // Legacy wrappers — delegate to settleOrder so old call-sites still work
   generateBill: async () => {
-    const order = get().activeOrders[get().selectedTableId];
+    const tableId = get().selectedTableId;
+    const order = get().activeOrders[tableId];
     if (!order) return;
-    await get().settleOrder({ cash: order.total, card: 0, upi: 0 });
+    const branch = get().currentBranch;
+
+    // Show a loading indicator in the UI (we can reuse isSettling state for the spinner)
+    set({ isSettling: true, settlementError: null });
+
+    try {
+      const { orderApi, printerApi } = await import('../services/api.service');
+
+      // 1. Sync order to DB (so backend has latest items)
+      let dbOrderId = order.dbOrderId || order._id;
+      try {
+        const syncRes = await orderApi.syncLocal({
+          ...order,
+          branchId: order.branchId || branch?._id,
+          tableNumber: order.tableNumber || get().tables.find((t) => t._id === tableId)?.tableNumber || 'TBL',
+          staffId: order.staffId || get().currentUser?._id,
+        });
+        if ((syncRes as any)?._id) dbOrderId = (syncRes as any)._id;
+      } catch (syncErr: any) {
+        if (!dbOrderId) throw new Error('Network error. Cannot sync order before billing.');
+      }
+
+      // 2. Generate Bill (stays Unpaid, order stays Active)
+      let dbBillId = order.dbBillId;
+      let billNumber = order.billNumber;
+      if (!dbBillId || dbBillId === dbOrderId || dbBillId.startsWith('ORD-') || dbBillId.startsWith('#ORD')) {
+        const billRes = await orderApi.generateBill(
+          dbOrderId,
+          order.branchId || branch?._id || 'BR-MAIN'
+        ) as any;
+        const actualBill = billRes?.bill || (billRes?._id && (billRes?.orderId || billRes?.order_id) ? billRes : null) || billRes;
+        if (!actualBill?._id) throw new Error('Bill could not be generated.');
+        dbBillId = actualBill._id;
+        billNumber = actualBill.billNumber || billRes?.billNumber;
+      }
+
+      // 3. Update local state so we have dbBillId (used by Settle later)
+      set((state) => ({
+        activeOrders: {
+          ...state.activeOrders,
+          [tableId]: {
+            ...order,
+            dbOrderId,
+            dbBillId,
+            billNumber,
+          }
+        },
+        isSettling: false
+      }));
+
+      // 4. Print the Bill locally (Send to cashier/receipt printer)
+      const printers = get().printers || [];
+      const cashierPrinter = printers.find((p) => ['RECEIPT', 'BOTH', 'cashier', 'both'].includes(p.role || p.duty || ''));
+      if (cashierPrinter) {
+        await printerApi.printJob(cashierPrinter._id, {
+          type: 'RECEIPT',
+          orderData: get().activeOrders[tableId],
+          billNumber: billNumber,
+        }).catch((e) => console.error('Failed to print bill:', e));
+      }
+
+    } catch (err: any) {
+      set({ isSettling: false, settlementError: err.message || 'Failed to generate bill.' });
+    }
   },
 
   processPayment: async (paymentParam) => {
