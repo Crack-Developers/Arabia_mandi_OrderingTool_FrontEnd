@@ -116,7 +116,8 @@ export const BranchConfig: React.FC = () => {
     setAddress('');
     setPhone('+91 ');
     setGst('36AABCA1234F1Z5');
-    setTimings('11:30 AM – 11:30 PM');
+    setStartTime('11:30 AM');
+    setEndTime('11:30 PM');
     setManagerName('');
     setManagerId('');
     setBranchStaffList([]);
