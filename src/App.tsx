@@ -2,16 +2,12 @@ import { useEffect } from 'react';
 import { useERPStore } from './stores/erp.store';
 import { LoginPage } from './components/auth/LoginPage';
 import { Navbar } from './components/layout/Navbar';
-import { ReceptionDashboard } from './components/pos/ReceptionDashboard';
-import { TableManagementScreen } from './components/tables/TableManagementScreen';
-import { MenuManager } from './components/menu/MenuManager';
 import { BranchConfig } from './components/admin/BranchConfig';
 import { AdminDashboard } from './components/admin/AdminDashboard';
 import { OrderManagementPage } from './components/admin/OrderManagementPage';
 import { SyncQueueScreen } from './components/admin/SyncQueueScreen';
 import { DishSummaryPage } from './components/admin/DishSummaryPage';
 import { PrintModal } from './components/pos/PrintModal';
-import { TableModals } from './components/pos/TableModals';
 import { PrinterMenuRoutingPage } from './components/printers/PrinterMenuRoutingPage';
 import { PrinterManagementDashboard } from './components/printers/PrinterManagementDashboard';
 
@@ -60,12 +56,6 @@ export function App() {
 
   const renderActiveScreen = () => {
     switch (activeScreen) {
-      case 'POS_WORKSPACE':
-        return <ReceptionDashboard />;
-      case 'TABLE_LAYOUT':
-        return <TableManagementScreen />;
-      case 'MENU_MANAGER':
-        return <MenuManager />;
       case 'BRANCH_SETTINGS':
         return <BranchConfig />;
       case 'ADMIN_ANALYTICS':
@@ -81,7 +71,7 @@ export function App() {
       case 'PRINTER_ROUTING':
         return <PrinterMenuRoutingPage />;
       default:
-        return <ReceptionDashboard />;
+        return <AdminDashboard />;
     }
   };
 
@@ -99,7 +89,6 @@ export function App() {
 
       {/* Modal Dialogs */}
       <PrintModal />
-      <TableModals />
     </div>
   );
 }

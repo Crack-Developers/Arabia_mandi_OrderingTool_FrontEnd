@@ -203,7 +203,7 @@ export const useERPStore = create<ERPState>()(
   currentUser: null,
   activeRole: undefined,
   isAuthenticated: false,
-  activeScreen: 'POS_WORKSPACE',
+  activeScreen: 'ADMIN_ANALYTICS',
   previousScreenBeforePrinterRouting: undefined,
   printerMappingPrinterId: null,
   posViewMode: 'TABLES',
@@ -274,7 +274,7 @@ export const useERPStore = create<ERPState>()(
         currentUser: staff,
         activeRole: staff.role,
         isAuthenticated: true,
-        activeScreen: staff.role === 'Super Admin' ? 'ADMIN_ANALYTICS' : 'POS_WORKSPACE',
+        activeScreen: 'ADMIN_ANALYTICS',
       });
       return true;
     }
@@ -307,7 +307,7 @@ export const useERPStore = create<ERPState>()(
         currentUser: staffObj,
         activeRole: user.role as UserRole,
         isAuthenticated: true,
-        activeScreen: user.role === 'Super Admin' ? 'ADMIN_ANALYTICS' : 'POS_WORKSPACE',
+        activeScreen: 'ADMIN_ANALYTICS',
       });
       // Hydrate branch-scoped data — always pass branchId so data is isolated per branch
       const bId = user.branchId as string | undefined;
@@ -329,7 +329,7 @@ export const useERPStore = create<ERPState>()(
       isAuthenticated: false,
       currentUser: null,
       activeRole: undefined,
-      activeScreen: 'POS_WORKSPACE',
+      activeScreen: 'ADMIN_ANALYTICS',
       previousScreenBeforePrinterRouting: undefined,
       printerMappingPrinterId: null,
       // ── Clear ALL branch-scoped data so it never leaks into the next session ──
@@ -348,13 +348,13 @@ export const useERPStore = create<ERPState>()(
       printerMappingPrinterId: printerId,
       previousScreenBeforePrinterRouting:
         state.activeScreen === 'PRINTER_ROUTING'
-          ? state.previousScreenBeforePrinterRouting || 'POS_WORKSPACE'
+          ? state.previousScreenBeforePrinterRouting || 'ADMIN_ANALYTICS'
           : state.activeScreen,
       activeScreen: 'PRINTER_ROUTING',
     })),
   closePrinterRouting: () =>
     set((state) => ({
-      activeScreen: state.previousScreenBeforePrinterRouting || 'POS_WORKSPACE',
+      activeScreen: state.previousScreenBeforePrinterRouting || 'ADMIN_ANALYTICS',
       previousScreenBeforePrinterRouting: undefined,
       printerMappingPrinterId: null,
     })),
