@@ -628,7 +628,7 @@ export const AdminDashboard: React.FC = () => {
                   <table className="w-full text-left border-collapse min-w-[850px]">
                     <thead>
                       <tr className="bg-slate-100/80 border-b border-slate-200 text-[11px] uppercase tracking-wider font-extrabold text-slate-600">
-                        <th className="py-3.5 px-4 w-28">Table / ID</th>
+                        <th className="py-3.5 px-4 w-44">Branch &amp; Table</th>
                         <th className="py-3.5 px-4 w-32">Ref #</th>
                         <th className="py-3.5 px-4 w-36">Timing</th>
                         <th className="py-3.5 px-4 w-32">Status</th>
@@ -660,7 +660,13 @@ export const AdminDashboard: React.FC = () => {
                           <tr key={idx} className="hover:bg-slate-50/80 transition-colors align-top">
                             {/* Column 1: Table Number / ID */}
                             <td className="py-4 px-4 font-bold text-slate-900">
-                              <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-slate-100 border border-slate-200 text-xs">
+                              {log.branchName && (
+                                <div className="text-[11px] font-extrabold text-blue-700 mb-1.5 flex items-center gap-1.5">
+                                  <span className="w-2 h-2 rounded-full bg-blue-600 flex-shrink-0 shadow-2xs" />
+                                  <span>{log.branchName} {log.branchCode && `(${log.branchCode})`}</span>
+                                </div>
+                              )}
+                              <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-slate-100 border border-slate-200 text-xs font-bold text-slate-800">
                                 <span>Table {log.tableNumber || 'N/A'}</span>
                               </div>
                             </td>

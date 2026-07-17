@@ -48,7 +48,7 @@ router.post('/', (req, res) => {
   try {
     const db   = getDb();
     const body = req.body;
-    const _id  = uuidv4();
+    const _id  = body._id || body.id || uuidv4();
     const orderNumber = `ORD-${Date.now().toString().slice(-6)}`;
 
     db.prepare(`
@@ -150,7 +150,13 @@ router.post('/:id/kot', (req, res) => {
 
     const order = enrichOrder(db, db.prepare('SELECT * FROM orders WHERE _id = ?').get(orderId));
     broadcastOrderUpdate(req.io, order);
-    if (req.io) req.io.to(`branch_${order.branchId}`).emit('kot_ready', { kotId, orderId, items: newItems });
+    if (req.io) {
+      const kotPayload = { kotId, orderId, items: newItems };
+      req.io.to(`branch_${order.branchId}`).emit('kot_ready', kotPayload);
+      req.io.to(`branch_${order.branchId}`).emit('kot:generated', kotPayload);
+      req.io.emit('kot_ready', kotPayload);
+      req.io.emit('kot:generated', kotPayload);
+    }
 
     logSync('kots', kotId, 'INSERT', { kotId, orderId });
     res.json({ success: true, data: { ...order, latestKot: { _id: kotId, items: newItems, kotNumber: kotCount + 1 } } });
@@ -167,20 +173,30 @@ router.post('/:id/bill', (req, res) => {
     const order   = db.prepare('SELECT * FROM orders WHERE _id = ?').get(orderId);
     if (!order) return res.status(404).json({ success: false, message: 'Order not found' });
 
-    const billId = uuidv4();
-    db.prepare(`
-      INSERT INTO bills (_id, order_id, branch_id, subtotal, tax, discount, total, status, created_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, 'unpaid', ?)
-    `).run(billId, orderId, order.branch_id, order.subtotal, order.tax, order.discount, order.total, now());
+    let bill = db.prepare("SELECT * FROM bills WHERE order_id = ? ORDER BY created_at DESC LIMIT 1").get(orderId);
+    let billId;
+    if (bill) {
+      billId = bill._id;
+    } else {
+      billId = uuidv4();
+      db.prepare(`
+        INSERT INTO bills (_id, order_id, branch_id, subtotal, tax, discount, total, status, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, 'unpaid', ?)
+      `).run(billId, orderId, order.branch_id, order.subtotal, order.tax, order.discount, order.total, now());
+      bill = db.prepare('SELECT * FROM bills WHERE _id = ?').get(billId);
+      logSync('bills', billId, 'INSERT', bill);
+    }
 
     db.prepare("UPDATE orders SET status = 'billed', updated_at = ? WHERE _id = ?").run(now(), orderId);
 
-    const bill  = db.prepare('SELECT * FROM bills WHERE _id = ?').get(billId);
-    const full  = enrichOrder(db, db.prepare('SELECT * FROM orders WHERE _id = ?').get(orderId));
-    logSync('bills', billId, 'INSERT', bill);
+    const full = enrichOrder(db, db.prepare('SELECT * FROM orders WHERE _id = ?').get(orderId));
     broadcastOrderUpdate(req.io, full);
+    if (req.io) {
+      req.io.to(`branch_${order.branch_id}`).emit('bill:generated', bill);
+      req.io.emit('bill:generated', bill);
+    }
 
-    res.json({ success: true, data: { ...full, bill } });
+    res.json({ success: true, data: { ...bill, order: full, bill } });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
   }
@@ -256,18 +272,19 @@ router.post('/sync-local', (req, res) => {
 
 function insertItems(db, orderId, items) {
   const stmt = db.prepare(`
-    INSERT INTO order_items (_id, order_id, menu_item_id, name, price, qty, notes, kot_printed, updated_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?)
+    INSERT INTO order_items (_id, order_id, menu_item_id, menuItemId, name, price, qty, quantity, notes, kot_printed, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?)
   `);
   for (const item of items) {
-    stmt.run(uuidv4(), orderId, item.menuItemId || item._id || '', item.name, item.price, item.qty || 1, item.notes || '', now());
+    const q = item.qty || item.quantity || 1;
+    stmt.run(uuidv4(), orderId, item.menuItemId || item._id || '', item.menuItemId || item._id || '', item.name, item.price, q, q, item.notes || '', now());
   }
 }
 
 function recalcTotals(db, orderId) {
   const items  = db.prepare('SELECT * FROM order_items WHERE order_id = ?').all(orderId);
   const branch = db.prepare('SELECT * FROM branch_config LIMIT 1').get();
-  const subtotal = items.reduce((s, i) => s + i.price * i.qty, 0);
+  const subtotal = items.reduce((s, i) => s + i.price * (i.qty || i.quantity || 1), 0);
   const cgst   = (branch?.cgst ?? 2.5) / 100;
   const sgst   = (branch?.sgst ?? 2.5) / 100;
   const tax    = subtotal * (cgst + sgst);
@@ -300,8 +317,13 @@ function enrichOrder(db, o) {
     createdAt:   o.created_at,
     updatedAt:   o.updated_at,
     items:       items.map(i => ({
-      _id: i._id, menuItemId: i.menu_item_id, name: i.name,
-      price: i.price, qty: i.qty, notes: i.notes, kotPrinted: i.kot_printed === 1,
+      _id: i._id,
+      menuItemId: i.menu_item_id || i.menuItemId || i.menuItem_id || '',
+      name: i.name,
+      price: i.price,
+      qty: i.qty || i.quantity || 1,
+      notes: i.notes,
+      kotPrinted: i.kot_printed === 1,
     })),
     kots: kots.map(k => ({
       _id: k._id, kotNumber: k.kotNumber,
@@ -317,13 +339,24 @@ function enrichOrder(db, o) {
 function broadcastOrderUpdate(io, order) {
   if (!io || !order) return;
   io.to(`branch_${order.branchId}`).emit('order_updated', order);
+  io.to(`branch_${order.branchId}`).emit('order:created', order);
+  io.to(`branch_${order.branchId}`).emit('place_order', order);
+  io.emit('order_updated', order);
+  io.emit('order:created', order);
+  io.emit('place_order', order);
 }
 
 function broadcastTableUpdate(io, table) {
   if (!io || !table) return;
-  io.to(`branch_${table.branch_id}`).emit('table_updated', {
-    _id: table._id, status: table.status, currentOrderId: table.current_order_id,
-  });
+  const payload = {
+    _id: table._id, tableId: table._id, status: table.status, currentOrderId: table.current_order_id,
+  };
+  io.to(`branch_${table.branch_id}`).emit('table_updated', payload);
+  io.to(`branch_${table.branch_id}`).emit('table:status_changed', payload);
+  io.to(`branch_${table.branch_id}`).emit('table_status', payload);
+  io.emit('table_updated', payload);
+  io.emit('table:status_changed', payload);
+  io.emit('table_status', payload);
 }
 
 module.exports = router;

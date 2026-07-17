@@ -145,19 +145,21 @@ export interface ERPState {
 function reconstructKotPrinted(order: any): any {
   if (!order?.kots?.length || !order?.items?.length) return order;
 
-  // Collect all menuItemIds that appear in any previous KOT
-  const alreadyPrintedMenuIds = new Set<string>();
+  // Collect all unique item IDs from previous KOTs
+  const alreadyPrintedItemIds = new Set<string>();
   for (const kot of order.kots) {
     for (const kotItem of kot.items || []) {
-      const menuId = String(kotItem.menuItemId || '');
-      if (menuId && menuId !== 'undefined') alreadyPrintedMenuIds.add(menuId);
+      const itemId = String(kotItem.id || kotItem._id || '');
+      if (itemId && itemId !== 'undefined') alreadyPrintedItemIds.add(itemId);
     }
   }
 
   const updatedItems = order.items.map((item: any) => {
     if (item.kotPrinted) return item; // already flagged, skip
-    const menuId = String(item.menuItemId || '');
-    return alreadyPrintedMenuIds.has(menuId) ? { ...item, kotPrinted: true } : item;
+    const itemId = String(item.id || item._id || '');
+    return itemId && itemId !== 'undefined' && alreadyPrintedItemIds.has(itemId)
+      ? { ...item, kotPrinted: true }
+      : item;
   });
 
   return { ...order, items: updatedItems };
@@ -203,7 +205,7 @@ export const useERPStore = create<ERPState>()(
   currentUser: null,
   activeRole: undefined,
   isAuthenticated: false,
-  activeScreen: 'ADMIN_ANALYTICS',
+  activeScreen: 'POS_WORKSPACE',
   previousScreenBeforePrinterRouting: undefined,
   printerMappingPrinterId: null,
   posViewMode: 'TABLES',
@@ -274,7 +276,7 @@ export const useERPStore = create<ERPState>()(
         currentUser: staff,
         activeRole: staff.role,
         isAuthenticated: true,
-        activeScreen: 'ADMIN_ANALYTICS',
+        activeScreen: staff.role === 'Super Admin' ? 'ADMIN_ANALYTICS' : 'POS_WORKSPACE',
       });
       return true;
     }
@@ -307,7 +309,7 @@ export const useERPStore = create<ERPState>()(
         currentUser: staffObj,
         activeRole: user.role as UserRole,
         isAuthenticated: true,
-        activeScreen: 'ADMIN_ANALYTICS',
+        activeScreen: user.role === 'Super Admin' ? 'ADMIN_ANALYTICS' : 'POS_WORKSPACE',
       });
       // Hydrate branch-scoped data — always pass branchId so data is isolated per branch
       const bId = user.branchId as string | undefined;
@@ -329,7 +331,7 @@ export const useERPStore = create<ERPState>()(
       isAuthenticated: false,
       currentUser: null,
       activeRole: undefined,
-      activeScreen: 'ADMIN_ANALYTICS',
+      activeScreen: 'POS_WORKSPACE',
       previousScreenBeforePrinterRouting: undefined,
       printerMappingPrinterId: null,
       // ── Clear ALL branch-scoped data so it never leaks into the next session ──
@@ -348,13 +350,13 @@ export const useERPStore = create<ERPState>()(
       printerMappingPrinterId: printerId,
       previousScreenBeforePrinterRouting:
         state.activeScreen === 'PRINTER_ROUTING'
-          ? state.previousScreenBeforePrinterRouting || 'ADMIN_ANALYTICS'
+          ? state.previousScreenBeforePrinterRouting || 'POS_WORKSPACE'
           : state.activeScreen,
       activeScreen: 'PRINTER_ROUTING',
     })),
   closePrinterRouting: () =>
     set((state) => ({
-      activeScreen: state.previousScreenBeforePrinterRouting || 'ADMIN_ANALYTICS',
+      activeScreen: state.previousScreenBeforePrinterRouting || 'POS_WORKSPACE',
       previousScreenBeforePrinterRouting: undefined,
       printerMappingPrinterId: null,
     })),
@@ -391,16 +393,27 @@ export const useERPStore = create<ERPState>()(
   setOfflineMode: (offline) => set({ isOfflineMode: offline }),
 
   fetchBranches: async () => {
-    try {
-      const data = await branchApi.getAll();
-      // Backend returns { success: true, data: [...] }
-      const list = Array.isArray(data) ? data : (data?.data || data?.branches || []);
-      const current = get().currentBranch;
-      const updatedCurrent = list.find((b: any) => b._id === current?._id) || list[0] || null;
-      set({ branches: list, currentBranch: updatedCurrent });
-    } catch {
-      // keep mock fallback on error
+    // Retry up to 5 times — handles Render cloud cold-start (can take 30s+)
+    // and the local Electron server still booting on first launch
+    const delays = [0, 2000, 5000, 10000, 20000];
+    for (let attempt = 0; attempt < delays.length; attempt++) {
+      if (delays[attempt] > 0) {
+        await new Promise(r => setTimeout(r, delays[attempt]));
+      }
+      try {
+        const data = await branchApi.getAll();
+        const list = Array.isArray(data) ? data : (data?.data || data?.branches || []);
+        if (list.length > 0) {
+          const current = get().currentBranch;
+          const updatedCurrent = list.find((b: any) => b._id === current?._id) || list[0] || null;
+          set({ branches: list, currentBranch: updatedCurrent });
+          return; // success — stop retrying
+        }
+      } catch {
+        // network error or local server not ready yet — retry
+      }
     }
+    // All retries exhausted — keep whatever was already in state
   },
 
   fetchTables: async (branchId?: string) => {
@@ -858,12 +871,17 @@ export const useERPStore = create<ERPState>()(
   },
 
   addMenuItem: async (itemData) => {
+    const priceVal = itemData.price != null
+      ? Number(itemData.price)
+      : (Array.isArray(itemData.variants) && itemData.variants[0]?.price != null ? Number(itemData.variants[0].price) : 100);
+
     const payload = {
       branchId: get().currentBranch._id,
       categoryId: itemData.categoryId || 'cat-1',
       name: itemData.name || 'New Item',
+      price: priceVal,
       description: itemData.description || '',
-      variants: itemData.variants || [{ name: 'Regular', price: 100 }],
+      variants: itemData.variants || [{ name: 'Regular', price: priceVal }],
       addons: itemData.addons || [],
       badge: itemData.badge,
       sections: itemData.sections || ['ALL'],
@@ -884,9 +902,9 @@ export const useERPStore = create<ERPState>()(
 
   updateMenuItem: async (id, updates) => {
     try {
-      await menuApi.updateItem(id, updates);
+      const updatedItem = await menuApi.updateItem(id, updates);
       set((state) => ({
-        menuItems: state.menuItems.map((item) => (item._id === id ? { ...item, ...updates } : item)),
+        menuItems: state.menuItems.map((item) => (item._id === id ? { ...item, ...updates, ...(updatedItem || {}) } : item)),
       }));
     } catch (error) {
       console.warn('Failed to update menu item', error);
@@ -1169,14 +1187,18 @@ export const useERPStore = create<ERPState>()(
       ),
     }));
 
-    // Sync to backend
+    // Sync to backend & Print
     (async () => {
+      if (withPrint) {
+        get().printKOTBySection(newKot, tableId);
+      }
+
       let backendHandled = false;
       try {
         const { orderApi } = await import('../services/api.service');
         const dbOrderId = order.dbOrderId || order._id;
         if (dbOrderId && !dbOrderId.startsWith('local-')) {
-          const res = await orderApi.generateKOT(dbOrderId, withPrint);
+          const res = await orderApi.generateKOT(dbOrderId, withPrint, updatedOrder.items);
           backendHandled = true;
 
           // ── Sync backend's authoritative item list back to local state ────
@@ -1209,9 +1231,6 @@ export const useERPStore = create<ERPState>()(
       }
 
       if (!backendHandled) {
-        if (withPrint) {
-          get().printKOTBySection(newKot, tableId);
-        }
         syncOrderToBackend(updatedOrder, get);
       }
     })();
@@ -1260,24 +1279,46 @@ export const useERPStore = create<ERPState>()(
       // ── Step 2: Generate bill (idempotent — safe if already exists) ───────
       let dbBillId: string | undefined = order.dbBillId;
       let billNumber: string | undefined = order.billNumber;
-      if (!dbBillId) {
+      if (!dbBillId || dbBillId === dbOrderId || dbBillId.startsWith('ORD-') || dbBillId.startsWith('#ORD')) {
         // billRes is the unwrapped bill object
         const billRes = await orderApi.generateBill(
           dbOrderId,
           order.branchId || branch?._id || 'BR-MAIN'
         ) as any;
-        if (!billRes?._id) throw new Error('Bill could not be generated. Please try again.');
-        dbBillId = billRes._id;
-        billNumber = billRes.billNumber;
+        const actualBill = billRes?.bill || (billRes?._id && (billRes?.orderId || billRes?.order_id) ? billRes : null) || billRes;
+        if (!actualBill?._id) throw new Error('Bill could not be generated. Please try again.');
+        dbBillId = actualBill._id;
+        billNumber = actualBill.billNumber || billRes?.billNumber;
       }
 
       // ── Step 3: Process payment → DB: order=Completed, bill=Paid ─────────
-      await orderApi.processPayment(dbBillId!, {
-        cash:  paymentMethods.cash,
-        card:  paymentMethods.card,
-        upi:   paymentMethods.upi,
-        other: paymentMethods.other || 0,
-      } as any);
+      const doPayment = async (targetBillId: string) => {
+        return orderApi.processPayment(targetBillId, {
+          cash:  paymentMethods.cash,
+          card:  paymentMethods.card,
+          upi:   paymentMethods.upi,
+          other: paymentMethods.other || 0,
+        } as any);
+      };
+
+      try {
+        await doPayment(dbBillId!);
+      } catch (payErr: any) {
+        if (payErr?.message?.toLowerCase().includes('bill not found') || payErr?.statusCode === 404) {
+          console.warn('[settleOrder] Bill not found during payment, regenerating bill and retrying...');
+          const billRes = await orderApi.generateBill(
+            dbOrderId,
+            order.branchId || branch?._id || 'BR-MAIN'
+          ) as any;
+          const actualBill = billRes?.bill || (billRes?._id && (billRes?.orderId || billRes?.order_id) ? billRes : null) || billRes;
+          if (!actualBill?._id) throw new Error('Bill could not be regenerated.');
+          dbBillId = actualBill._id;
+          billNumber = actualBill.billNumber || billRes?.billNumber;
+          await doPayment(dbBillId!);
+        } else {
+          throw payErr;
+        }
+      }
 
       // ── Step 4: [Skipped, was building bill receipt data which is no longer used] ─────────
 

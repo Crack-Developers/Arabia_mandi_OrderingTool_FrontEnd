@@ -99,20 +99,44 @@ router.post('/items', (req, res) => {
   try {
     const db   = getDb();
     const _id  = uuidv4();
-    const body = req.body;
+    const body = req.body || {};
+    const branchId   = body.branchId || req.user?.branchId || db.prepare('SELECT _id FROM branches LIMIT 1').get()?._id || 'LOCAL-BRANCH';
+    const categoryId = body.categoryId || body.category_id || null;
+    const name       = body.name || 'Dish';
+    const price      = body.price !== undefined && body.price !== null
+      ? Number(body.price)
+      : (Array.isArray(body.variants) && body.variants[0]?.price != null ? Number(body.variants[0].price) : 0);
+    const core       = body.core !== undefined && body.core !== null && body.core !== '' ? Number(body.core) : null;
+    const taxRate    = body.taxRate !== undefined && body.taxRate !== null ? Number(body.taxRate) : (body.tax_rate !== undefined && body.tax_rate !== null ? Number(body.tax_rate) : 5);
+    const description= body.description || '';
+    const variants   = body.variants && Array.isArray(body.variants) ? JSON.stringify(body.variants) : JSON.stringify([{ name: 'Regular', price }]);
+    const addons     = body.addons && Array.isArray(body.addons) ? JSON.stringify(body.addons) : JSON.stringify([]);
+    const sections   = body.sections && Array.isArray(body.sections) ? JSON.stringify(body.sections) : JSON.stringify(['ALL']);
+    const badge      = body.badge || null;
+
     db.prepare(`
-      INSERT INTO menu_items (_id, branch_id, category_id, name, price, available, updated_at)
-      VALUES (?, ?, ?, ?, ?, 1, ?)
+      INSERT INTO menu_items (_id, branch_id, category_id, name, price, available, core, tax_rate, description, variants, addons, sections, badge, updated_at)
+      VALUES (?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       _id,
-      body.branchId || req.user?.branchId,
-      body.categoryId || body.category_id || '',
-      body.name, body.price, now()
+      branchId,
+      categoryId,
+      name,
+      price,
+      core,
+      taxRate,
+      description,
+      variants,
+      addons,
+      sections,
+      badge,
+      now()
     );
     const item = db.prepare('SELECT * FROM menu_items WHERE _id = ?').get(_id);
     logSync('menu_items', _id, 'INSERT', formatItem(item));
     res.status(201).json({ success: true, data: formatItem(item) });
   } catch (err) {
+    console.error('[Menu API] POST /items error:', err);
     res.status(500).json({ success: false, message: err.message });
   }
 });
@@ -120,21 +144,46 @@ router.post('/items', (req, res) => {
 router.put('/items/:id', (req, res) => {
   try {
     const db   = getDb();
-    const body = req.body;
+    const body = req.body || {};
     const id   = req.params.id;
+    const existing = db.prepare('SELECT * FROM menu_items WHERE _id = ?').get(id);
+    if (!existing) return res.status(404).json({ success: false, message: 'Item not found' });
+
+    const name       = body.name !== undefined && body.name !== null ? body.name : existing.name;
+    const price      = body.price !== undefined && body.price !== null
+      ? Number(body.price)
+      : (Array.isArray(body.variants) && body.variants[0]?.price != null ? Number(body.variants[0].price) : existing.price);
+    const categoryId = (body.categoryId || body.category_id) !== undefined && (body.categoryId || body.category_id) !== null ? (body.categoryId || body.category_id) : existing.category_id;
+    const available  = body.available !== undefined && body.available !== null ? (body.available ? 1 : 0) : existing.available;
+    const core       = body.core !== undefined ? (body.core !== null && body.core !== '' ? Number(body.core) : null) : existing.core;
+    const taxRate    = body.taxRate !== undefined && body.taxRate !== null ? Number(body.taxRate) : (body.tax_rate !== undefined && body.tax_rate !== null ? Number(body.tax_rate) : (existing.tax_rate !== null ? Number(existing.tax_rate) : 5));
+    const description= body.description !== undefined && body.description !== null ? body.description : (existing.description || '');
+    const variants   = body.variants && Array.isArray(body.variants) ? JSON.stringify(body.variants) : existing.variants;
+    const addons     = body.addons && Array.isArray(body.addons) ? JSON.stringify(body.addons) : existing.addons;
+    const sections   = body.sections && Array.isArray(body.sections) ? JSON.stringify(body.sections) : existing.sections;
+    const badge      = body.badge !== undefined ? (body.badge || null) : existing.badge;
+
     db.prepare(`
       UPDATE menu_items SET
-        name        = COALESCE(?, name),
-        price       = COALESCE(?, price),
-        category_id = COALESCE(?, category_id),
-        available   = COALESCE(?, available),
+        name        = ?,
+        price       = ?,
+        category_id = ?,
+        available   = ?,
+        core        = ?,
+        tax_rate    = ?,
+        description = ?,
+        variants    = ?,
+        addons      = ?,
+        sections    = ?,
+        badge       = ?,
         updated_at  = ?
       WHERE _id = ?
-    `).run(body.name, body.price, body.categoryId || body.category_id, body.available !== undefined ? (body.available ? 1 : 0) : null, now(), id);
+    `).run(name, price, categoryId, available, core, taxRate, description, variants, addons, sections, badge, now(), id);
     const item = db.prepare('SELECT * FROM menu_items WHERE _id = ?').get(id);
     if (item) logSync('menu_items', id, 'UPDATE', formatItem(item));
     res.json({ success: true, data: item ? formatItem(item) : null });
   } catch (err) {
+    console.error('[Menu API] PUT /items error:', err);
     res.status(500).json({ success: false, message: err.message });
   }
 });
@@ -166,14 +215,58 @@ router.patch('/items/:id/availability', (req, res) => {
 });
 
 function formatItem(i) {
+  if (!i) return null;
+  const priceNum = Number(i.price) || 0;
+  let parsedVariants = [{ name: 'Regular', price: priceNum }];
+  let parsedAddons = [];
+  let parsedSections = ['ALL'];
+
+  try {
+    if (i.variants && typeof i.variants === 'string') {
+      const v = JSON.parse(i.variants);
+      if (Array.isArray(v) && v.length > 0) parsedVariants = v;
+    } else if (Array.isArray(i.variants) && i.variants.length > 0) {
+      parsedVariants = i.variants;
+    }
+  } catch (e) {}
+
+  try {
+    if (i.addons && typeof i.addons === 'string') {
+      const a = JSON.parse(i.addons);
+      if (Array.isArray(a)) parsedAddons = a;
+    } else if (Array.isArray(i.addons)) {
+      parsedAddons = i.addons;
+    }
+  } catch (e) {}
+
+  try {
+    if (i.sections && typeof i.sections === 'string') {
+      const s = JSON.parse(i.sections);
+      if (Array.isArray(s) && s.length > 0) parsedSections = s;
+    } else if (Array.isArray(i.sections) && i.sections.length > 0) {
+      parsedSections = i.sections;
+    }
+  } catch (e) {}
+
+  const coreVal = i.core !== null && i.core !== undefined && i.core !== '' ? Number(i.core) : undefined;
+  const taxRateVal = i.tax_rate !== null && i.tax_rate !== undefined ? Number(i.tax_rate) : 5;
+
   return {
     _id:         i._id,
-    name:        i.name,
-    price:       i.price,
-    categoryId:  i.category_id,
+    name:        i.name || '',
+    price:       priceNum,
+    categoryId:  i.category_id || '',
     categoryName:i.categoryName || '',
-    branchId:    i.branch_id,
+    branchId:    i.branch_id || null,
     available:   i.available === 1,
+    active:      true,
+    description: i.description || '',
+    variants:    parsedVariants,
+    addons:      parsedAddons,
+    sections:    parsedSections,
+    badge:       i.badge || undefined,
+    core:        coreVal,
+    taxRate:     taxRateVal,
   };
 }
 

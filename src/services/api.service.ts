@@ -6,13 +6,14 @@
 
 const getBaseUrl = (): string => {
   // Electron desktop app: preload.js sets this to http://localhost:3001/api/v1
-  // This is UNDEFINED in all browsers → production web behaviour is unchanged
+  // Called on every request so Electron URL is always used even if injected late.
   if ((window as any).__ELECTRON_LOCAL_API__) return (window as any).__ELECTRON_LOCAL_API__;
   if (import.meta.env.VITE_API_URL) return import.meta.env.VITE_API_URL;
   return `https://arabia-mandi-orderingtool-backend.onrender.com/api/v1`;
 };
 
-const BASE_URL = getBaseUrl();
+// NOTE: Do NOT freeze this into a const — call getBaseUrl() on each request
+// so the Electron preload injection is always respected.
 
 // ─── Token helpers ───────────────────────────────────────────────
 export const getToken = (): string | null => localStorage.getItem('erp_token');
@@ -28,7 +29,7 @@ async function request<T>(
   path: string,
   body?: any
 ): Promise<T> {
-  const res = await fetch(`${BASE_URL}${path}`, {
+  const res = await fetch(`${getBaseUrl()}${path}`, {
     method,
     headers: {
       'Content-Type': 'application/json',
@@ -180,7 +181,7 @@ export const orderApi = {
   create: (data: any) => post<any>('/orders', data),
   addItems: (id: string, items: any[]) => post<any>(`/orders/${id}/add-items`, { items }),
   updateStatus: (id: string, status: string) => patch<any>(`/orders/${id}/status`, { status }),
-  generateKOT: (id: string, withPrint: boolean = true) => post<any>(`/orders/${id}/kot`, { withPrint }),
+  generateKOT: (id: string, withPrint: boolean = true, items?: any[]) => post<any>(`/orders/${id}/kot`, { withPrint, items }),
   generateBill: (id: string, branchId: string) => post<any>(`/orders/${id}/bill`, { branchId }),
   processPayment: (billId: string, paymentMethods: { cash: number; card: number; upi: number }) =>
     post<any>('/orders/payment', { billId, paymentMethods }),
