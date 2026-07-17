@@ -287,7 +287,8 @@ export const useERPStore = create<ERPState>()(
     try {
       const cleanUser = (username || '').trim();
       const cleanPass = (password || '').trim();
-      const result = await authApi.login(cleanUser, cleanPass);
+      const selectedBranchId = get().currentBranch?._id;
+      const result = await authApi.login(cleanUser, cleanPass, selectedBranchId);
       const { token, user } = result;
       setToken(token);
       // Map backend user to Staff shape

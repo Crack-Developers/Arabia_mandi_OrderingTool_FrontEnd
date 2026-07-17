@@ -81,8 +81,8 @@ const del  = <T>(path: string)              => request<T>('DELETE', path);
 // AUTH
 // ────────────────────────────────────────────────────────────────────────────
 export const authApi = {
-  login: (username: string, password: string) =>
-    post<any>('/auth/login', { username, password }),
+  login: (username: string, password: string, branchId?: string) =>
+    post<any>('/auth/login', { username, password, branchId }),
 
   getProfile: () => get<any>('/auth/profile'),
 
