@@ -1,45 +1,18 @@
 import React from 'react';
 import { useERPStore } from '../../stores/erp.store';
 import {
-  LayoutDashboard,
-  UtensilsCrossed,
-  Grid3X3,
   BarChart3,
   Settings,
   DatabaseBackup,
   ShieldAlert,
   PieChart,
+  Printer,
 } from 'lucide-react';
 
 export const Sidebar: React.FC = () => {
-  const { activeScreen, setActiveScreen, setPosViewMode, activeRole, syncQueue } = useERPStore();
+  const { activeScreen, setActiveScreen, activeRole, syncQueue } = useERPStore();
 
   const navItems = [
-    {
-      id: 'POS_WORKSPACE',
-      label: 'Reception POS',
-      icon: LayoutDashboard,
-      roles: ['Receptionist', 'Super Admin'],
-      badge: 'SCR-200',
-    },
-    {
-      id: 'TABLE_LAYOUT',
-      label: 'Table Management',
-      icon: Grid3X3,
-      roles: ['Receptionist', 'Super Admin'],
-    },
-    {
-      id: 'MENU_MANAGER',
-      label: 'Menu & Prices',
-      icon: UtensilsCrossed,
-      roles: ['Receptionist', 'Super Admin'],
-    },
-    {
-      id: 'BRANCH_SETTINGS',
-      label: 'Branch Config',
-      icon: Settings,
-      roles: ['Receptionist', 'Super Admin'],
-    },
     {
       id: 'ADMIN_ANALYTICS',
       label: 'HQ Executive Dashboard',
@@ -52,13 +25,24 @@ export const Sidebar: React.FC = () => {
       label: 'Dish Sales Summary',
       icon: PieChart,
       roles: ['Super Admin'],
-      badge: 'POV Table',
+    },
+    {
+      id: 'PRINTER_MANAGEMENT',
+      label: 'Printers',
+      icon: Printer,
+      roles: ['Super Admin'],
+    },
+    {
+      id: 'BRANCH_SETTINGS',
+      label: 'Branch Config',
+      icon: Settings,
+      roles: ['Super Admin'],
     },
     {
       id: 'SYNC_QUEUE',
       label: 'Offline Sync Engine',
       icon: DatabaseBackup,
-      roles: ['Receptionist', 'Super Admin'],
+      roles: ['Super Admin'],
       badgeCount: syncQueue.length,
     },
   ];
@@ -67,10 +51,10 @@ export const Sidebar: React.FC = () => {
     <aside className="w-64 bg-slate-900 border-r border-slate-800 text-slate-300 flex flex-col justify-between h-[calc(100vh-4rem)] sticky top-16 no-print">
       <div className="p-4 space-y-1.5">
         <div className="px-3 py-2 text-[11px] font-bold uppercase tracking-wider text-slate-400">
-          Operational Screens
+          Admin Controls
         </div>
         {navItems
-          .filter((item) => item.roles.includes(activeRole || 'Receptionist'))
+          .filter((item) => item.roles.includes(activeRole || 'Super Admin'))
           .map((item) => {
             const Icon = item.icon;
             const isActive = activeScreen === item.id;
@@ -78,9 +62,6 @@ export const Sidebar: React.FC = () => {
               <button
                 key={item.id}
                 onClick={() => {
-                  if (item.id === 'POS_WORKSPACE' && setPosViewMode) {
-                    setPosViewMode('TABLES');
-                  }
                   setActiveScreen(item.id as any);
                 }}
                 className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs font-semibold transition-all ${
@@ -117,7 +98,7 @@ export const Sidebar: React.FC = () => {
             <span>Arabian Mandi ERP</span>
           </div>
           <p className="text-[11px] text-slate-400 leading-relaxed">
-            Strict role isolation per AMERP-UPS-005. Offline synchronization active via local IndexedDB.
+            Super Admin — HQ Management Portal
           </p>
         </div>
       </div>
