@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useERPStore } from '../../stores/erp.store';
 import {
   Wifi,
@@ -17,6 +17,7 @@ import {
   BarChart3,
   Printer,
   PieChart,
+  Radio,
 } from 'lucide-react';
 import { ArabiaMandiLogo } from '../common/ArabiaMandiLogo';
 
@@ -44,6 +45,28 @@ export const Navbar: React.FC = () => {
 
   const [showNotifs, setShowNotifs] = useState(false);
   const unreadCount = notifications.filter((n) => !n.read).length;
+
+  // Electron Desktop LAN & Sync state
+  const [localIp, setLocalIp] = useState<string | null>(null);
+  const [electronSync, setElectronSync] = useState<{ pendingCount?: number; isSyncing?: boolean; lastSyncAt?: string } | null>(null);
+
+  useEffect(() => {
+    const api = (window as any).electronAPI;
+    if (api && api.isElectron) {
+      api.getLocalIP?.().then((ip: string) => setLocalIp(ip)).catch(() => {});
+      const fetchSync = () => {
+        api.getSyncStatus?.().then((status: any) => {
+          if (status) setElectronSync(status);
+        }).catch(() => {});
+      };
+      fetchSync();
+      const timer = setInterval(fetchSync, 6000);
+      return () => clearInterval(timer);
+    }
+  }, []);
+
+  const totalPending = syncQueue.length + (electronSync?.pendingCount || 0);
+  const activeSyncing = isSyncing || electronSync?.isSyncing;
 
   return (
     <header className="h-16 bg-slate-900 text-white flex items-center justify-between px-6 border-b border-slate-800 shadow-lg sticky top-0 z-40 no-print">
@@ -145,8 +168,19 @@ export const Navbar: React.FC = () => {
           })}
       </div>
 
-      {/* Right side controls: Offline toggle, Sync, Notifications & Profile */}
+      {/* Right side controls: LAN IP, Offline toggle, Sync status & Notifications */}
       <div className="flex items-center gap-3">
+        {/* Desktop LAN Server IP Badge */}
+        {localIp && (
+          <div
+            className="hidden xl:flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold bg-blue-500/15 text-blue-300 border border-blue-500/30 shadow-2xs"
+            title="Waiter mobile devices on the LAN should connect to this IP on port 3001"
+          >
+            <Radio className="w-3.5 h-3.5 text-blue-400 animate-pulse" />
+            <span>LAN: {localIp}:3001</span>
+          </div>
+        )}
+
         {/* Offline Mode Toggle Button */}
         <button
           onClick={() => setOfflineMode(!isOfflineMode)}
@@ -165,22 +199,45 @@ export const Navbar: React.FC = () => {
           ) : (
             <>
               <Wifi className="w-3.5 h-3.5 text-emerald-400" />
-              <span>ONLINE</span>
+              <span>ONLINE {localIp ? '(LAN Active)' : ''}</span>
             </>
           )}
         </button>
 
-        {/* Sync Queue indicator */}
-        {syncQueue.length > 0 && (
-          <button
-            onClick={triggerSyncQueue}
-            disabled={isSyncing}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-amber-500/20 text-amber-300 border border-amber-500/40 hover:bg-amber-500/30 transition-all"
-          >
-            <RefreshCw className={`w-3.5 h-3.5 ${isSyncing ? 'animate-spin' : ''}`} />
-            <span>Sync ({syncQueue.length})</span>
-          </button>
-        )}
+        {/* Sync Status Badge / Trigger */}
+        <button
+          onClick={triggerSyncQueue}
+          disabled={activeSyncing}
+          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border transition-all cursor-pointer ${
+            activeSyncing
+              ? 'bg-amber-500/20 text-amber-300 border-amber-500/40 animate-pulse'
+              : totalPending > 0
+              ? 'bg-amber-500/20 text-amber-300 border-amber-500/40 hover:bg-amber-500/30'
+              : 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30 hover:bg-emerald-500/25'
+          }`}
+          title={
+            totalPending > 0
+              ? 'Click to push pending local mutations to cloud'
+              : 'All offline changes synced with central cloud database'
+          }
+        >
+          {activeSyncing ? (
+            <>
+              <RefreshCw className="w-3.5 h-3.5 animate-spin text-amber-400" />
+              <span>Syncing ({totalPending})...</span>
+            </>
+          ) : totalPending > 0 ? (
+            <>
+              <RefreshCw className="w-3.5 h-3.5 text-amber-400" />
+              <span>Sync Queue ({totalPending})</span>
+            </>
+          ) : (
+            <>
+              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
+              <span>Cloud Synced</span>
+            </>
+          )}
+        </button>
 
         {/* Notifications Dropdown */}
         <div className="relative">

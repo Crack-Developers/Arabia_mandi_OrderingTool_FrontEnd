@@ -127,6 +127,7 @@ export interface ERPState {
 
   markNotificationRead: (id: string) => void;
   triggerSyncQueue: () => void;
+  checkSyncStatus: () => Promise<void>;
 
   addUser: (user: Partial<Staff>) => void;
   updateUser: (id?: any, updates?: any) => void;
@@ -1367,8 +1368,36 @@ export const useERPStore = create<ERPState>()(
     }));
   },
 
-  triggerSyncQueue: () => {
-    set({ syncQueue: [] });
+  triggerSyncQueue: async () => {
+    set({ isSyncing: true });
+    try {
+      const { syncApi } = await import('../services/api.service');
+      const res = await syncApi.upload([]);
+      const pending = res?.data?.pending !== undefined ? res.data.pending : 0;
+      set({
+        syncQueue: Array(pending).fill({ id: 'pending' }),
+        isSyncing: false,
+      });
+    } catch (err) {
+      console.error('Trigger sync error:', err);
+      set({ isSyncing: false });
+    }
+  },
+
+  checkSyncStatus: async () => {
+    try {
+      const { syncApi } = await import('../services/api.service');
+      const res = await syncApi.getStatus();
+      if (res?.data) {
+        const pending = res.data.pending !== undefined ? res.data.pending : res.data.pendingCount || 0;
+        set({
+          syncQueue: Array(pending).fill({ id: 'pending' }),
+          isSyncing: !!res.data.isSyncing,
+        });
+      }
+    } catch {
+      // Ignore errors when offline or starting up
+    }
   },
 
   addUser: async (user) => {

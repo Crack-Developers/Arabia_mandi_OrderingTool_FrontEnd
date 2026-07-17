@@ -25,6 +25,7 @@ export function App() {
     fetchMenuData,
     fetchStaffList,
     fetchPrinters,
+    checkSyncStatus,
     logout,
   } = useERPStore();
 
@@ -44,6 +45,12 @@ export function App() {
       fetchMenuData();
       fetchStaffList();
       fetchPrinters();
+      checkSyncStatus();
+
+      const syncInterval = setInterval(() => {
+        checkSyncStatus();
+      }, 10_000);
+      return () => clearInterval(syncInterval);
     }
   }, [isAuthenticated, currentUser?.branchId]);
 

@@ -107,8 +107,12 @@ export const AdminDashboard: React.FC = () => {
 
   const branchId = branchFilterId === 'ALL' ? undefined : branchFilterId;
 
-  const load = useCallback(async () => {
-    setLoading(true);
+  const load = useCallback(async (silent = false) => {
+    if (useERPStore.getState().isOfflineMode || !navigator.onLine) {
+      if (!silent) setError('Offline Mode Active: Analytics polling suspended until network is restored.');
+      return;
+    }
+    if (!silent) setLoading(true);
     setError(null);
     try {
       const res = await dashboardApi.getStats(
@@ -119,21 +123,30 @@ export const AdminDashboard: React.FC = () => {
         filterType === 'year' ? selectedYear : undefined
       );
       setData(res);
-      setLastSync(new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }));
+      setLastSync(new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', second: '2-digit' }));
     } catch (e: any) {
-      setError(e?.message || 'Failed to load dashboard data');
+      if (!silent) setError(e?.message || 'Failed to load dashboard data');
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   }, [filterType, selectedDate, selectedMonth, selectedYear, branchId]);
 
   // Load on mount and whenever date/branch changes
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => { load(false); }, [load]);
 
-  // Auto-refresh every 30 seconds to fetch data coming from receptionist POS
+  // Auto-refresh every 30 seconds when online; automatically recover on network re-connection
   useEffect(() => {
-    const t = setInterval(load, 30_000);
-    return () => clearInterval(t);
+    const t = setInterval(() => {
+      if (!useERPStore.getState().isOfflineMode && navigator.onLine) {
+        load(true);
+      }
+    }, 30_000);
+    const handleOnline = () => load(false);
+    window.addEventListener('online', handleOnline);
+    return () => {
+      clearInterval(t);
+      window.removeEventListener('online', handleOnline);
+    };
   }, [load]);
 
   const handleLeakageClick = async (type: string, title: string) => {
@@ -276,7 +289,7 @@ export const AdminDashboard: React.FC = () => {
           </div>
 
           <button
-            onClick={load}
+            onClick={() => load(false)}
             disabled={loading}
             className="p-1.5 hover:bg-slate-100 rounded-lg transition-colors border border-transparent hover:border-slate-200 disabled:opacity-40"
             title="Refresh Data"
@@ -289,15 +302,20 @@ export const AdminDashboard: React.FC = () => {
         </div>
 
         <div className="flex flex-wrap items-center gap-4 text-sm font-medium text-slate-600">
-          {lastSync ? (
-            <div className="flex items-center gap-2">
-              <Wifi className="w-4 h-4 text-emerald-500" />
-              <span>Synced at {lastSync}</span>
+          {useERPStore.getState().isOfflineMode ? (
+            <div className="flex items-center gap-2 px-3 py-1 rounded-full bg-red-50 text-red-700 border border-red-200 text-xs font-bold">
+              <WifiOff className="w-3.5 h-3.5 text-red-500" />
+              <span>Offline Simulation — Polling Paused</span>
+            </div>
+          ) : lastSync ? (
+            <div className="flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-50 text-emerald-800 border border-emerald-200 text-xs font-bold">
+              <Wifi className="w-3.5 h-3.5 text-emerald-500 animate-pulse" />
+              <span>🟢 Live Syncing (30s polling) • Last: {lastSync}</span>
             </div>
           ) : (
-            <div className="flex items-center gap-2">
-              <WifiOff className="w-4 h-4 text-slate-400" />
-              <span className="text-slate-400">Not synced yet</span>
+            <div className="flex items-center gap-2 px-3 py-1 rounded-full bg-slate-100 text-slate-600 border border-slate-200 text-xs font-bold">
+              <Loader2 className="w-3.5 h-3.5 text-slate-400 animate-spin" />
+              <span>Connecting & Syncing...</span>
             </div>
           )}
         </div>
