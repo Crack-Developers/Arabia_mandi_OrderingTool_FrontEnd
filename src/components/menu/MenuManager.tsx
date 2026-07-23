@@ -8,6 +8,7 @@ export const MenuManager: React.FC = () => {
     categories,
     printers,
     fetchPrinters,
+    fetchMenuData,
     toggleMenuItemAvailability,
     addMenuItem,
     addCategory,
@@ -16,26 +17,17 @@ export const MenuManager: React.FC = () => {
 
   useEffect(() => {
     fetchPrinters();
-  }, [fetchPrinters]);
+    fetchMenuData();
+  }, [fetchPrinters, fetchMenuData]);
 
-  const activeCategories =
-    categories && categories.length > 0
-      ? categories
-      : [
-          { _id: 'cat-mandi', name: 'Mandi Meat Platters' },
-          { _id: 'cat-starters', name: 'Arabian Starters & Grills' },
-          { _id: 'cat-desserts', name: 'Kunafa & Desserts' },
-          { _id: 'cat-beverages', name: 'Beverages & Mocktails' },
-        ];
+  const activeCategories = categories || [];
 
   const [selectedCat, setSelectedCat] = useState<string>('ALL');
   const [showAddModal, setShowAddModal] = useState(false);
 
   // New item form
   const [name, setName] = useState('');
-  const [categoryName, setCategoryName] = useState(
-    activeCategories[0]?.name || 'Mandi Meat Platters'
-  );
+  const [categoryName, setCategoryName] = useState('');
   const [core, setCore] = useState('');
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [basePrice, setBasePrice] = useState('450');
@@ -64,9 +56,19 @@ export const MenuManager: React.FC = () => {
     });
   };
 
-  const filteredItems = menuItems.filter(
-    (item) => selectedCat === 'ALL' || item.categoryId === selectedCat
-  );
+  // Generate unique category names (case-insensitive, only showing categories that have items)
+  const uniqueCategoryNames = Array.from(new Set([
+    ...menuItems.map(item => {
+      const itemCatId = typeof item.categoryId === 'string' ? item.categoryId : (item.categoryId as any)?._id || String(item.categoryId);
+      return (item.categoryName || activeCategories.find(c => String(c._id) === itemCatId)?.name || 'Uncategorized').trim().toLowerCase();
+    })
+  ])).sort();
+
+  const filteredItems = menuItems.filter((item) => {
+    const itemCatId = typeof item.categoryId === 'string' ? item.categoryId : (item.categoryId as any)?._id || String(item.categoryId);
+    const catName = (item.categoryName || activeCategories.find((c) => String(c._id) === itemCatId)?.name || 'Uncategorized').trim().toLowerCase();
+    return selectedCat === 'ALL' || itemCatId === selectedCat || catName === selectedCat;
+  });
 
   const handleCreateDish = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -80,7 +82,7 @@ export const MenuManager: React.FC = () => {
       matchedCat = await addCategory(categoryName.trim());
     }
 
-    const effCategoryId = matchedCat?._id || activeCategories[0]?._id || 'cat-mandi';
+    const effCategoryId = matchedCat?._id || activeCategories[0]?._id;
     
     let effVariants: { name: string; price: number }[] = [];
     if (variants.length === 0) {
@@ -150,17 +152,17 @@ export const MenuManager: React.FC = () => {
         >
           All Categories ({menuItems.length})
         </button>
-        {activeCategories.map((c) => (
+        {uniqueCategoryNames.map((catName) => (
           <button
-            key={c._id}
-            onClick={() => setSelectedCat(c._id)}
+            key={catName}
+            onClick={() => setSelectedCat(catName)}
             className={`px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
-              selectedCat === c._id
+              selectedCat === catName
                 ? 'bg-amber-500 text-slate-950 shadow-md'
                 : 'bg-white border border-slate-200 text-slate-700 hover:bg-slate-50'
             }`}
           >
-            {c.name}
+            {catName}
           </button>
         ))}
       </div>
@@ -180,8 +182,9 @@ export const MenuManager: React.FC = () => {
           </thead>
           <tbody className="divide-y divide-slate-100 text-xs">
             {filteredItems.map((item) => {
+              const itemCatId = typeof item.categoryId === 'string' ? item.categoryId : (item.categoryId as any)?._id || String(item.categoryId);
               const catName =
-                activeCategories.find((c) => c._id === item.categoryId)?.name || 'Mandi';
+                (item.categoryName || activeCategories.find((c) => String(c._id) === itemCatId)?.name || 'Uncategorized').trim().toLowerCase();
               const assignedPrinter = printers?.find((p) => p._id === item.printerId);
               return (
                 <tr key={item._id} className="hover:bg-slate-50/80 transition-colors">

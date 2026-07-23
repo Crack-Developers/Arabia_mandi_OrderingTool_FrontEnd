@@ -58,12 +58,12 @@ export const ReceptionDashboard: React.FC = () => {
       ? currentBranch.sections.map((sec, idx) => ({
           _id: `sec-${idx + 1}`,
           name: sec.name,
-          floor: sec.floor || 'Ground Floor',
+          
         }))
       : sections.map((sec) => ({
           _id: sec._id,
           name: sec.name,
-          floor: (sec as any).floor || 'Ground Floor',
+          
         }));
 
   const [selectedSectionId] = useState<string>('ALL');
@@ -199,11 +199,11 @@ export const ReceptionDashboard: React.FC = () => {
     );
   });
 
-  const groupedFloorSections = (() => {
+  const groupedSections = (() => {
     const groups: Array<{
       id: string;
       title: string;
-      floor: string;
+      
       prefix: string;
       tables: typeof filteredTables;
     }> = [];
@@ -233,7 +233,7 @@ export const ReceptionDashboard: React.FC = () => {
               groups.push({
                 id: `${sec._id}-${pref}`,
                 title: `${sec.name} (${pref})`,
-                floor: sec.floor || 'Floor',
+                
                 prefix: pref,
                 tables: tbls,
               });
@@ -242,7 +242,7 @@ export const ReceptionDashboard: React.FC = () => {
             groups.push({
               id: sec._id,
               title: sec.name,
-              floor: sec.floor || 'Floor',
+              
               prefix: '',
               tables: secTables,
             });
@@ -267,16 +267,12 @@ export const ReceptionDashboard: React.FC = () => {
           const firstTbl = tbls[0];
           const secDoc = sections.find((s) => s._id === firstTbl.sectionId || String(s._id) === String(firstTbl.sectionId));
           const tSecName = secDoc?.name || (firstTbl as any).sectionName || pref;
-          let inferredFloor = secDoc?.floor || 'General Area';
-          if (pref.includes('DIN') || pref.includes('1T')) inferredFloor = 'First Floor';
-          else if (pref.includes('G T') || pref.includes('main')) inferredFloor = 'Ground Floor';
-          else if (pref.includes('2T')) inferredFloor = 'Second Floor';
-          else if (pref.includes('PAR') || pref.includes('VIP')) inferredFloor = 'Party / VIP Floor';
+
 
           groups.push({
             id: `unassigned-${pref}`,
             title: tSecName && tSecName !== pref ? `${tSecName} (${pref})` : `${pref} Tables`,
-            floor: inferredFloor,
+            
             prefix: pref,
             tables: tbls,
           });
@@ -286,7 +282,7 @@ export const ReceptionDashboard: React.FC = () => {
       const selectedSec = displaySections.find((s) => s._id === selectedSectionId) || {
         _id: selectedSectionId,
         name: 'Dining Section',
-        floor: 'Selected Floor',
+        
       };
       const prefixMap = new Map<string, typeof filteredTables>();
       for (const t of filteredTables) {
@@ -300,7 +296,7 @@ export const ReceptionDashboard: React.FC = () => {
           groups.push({
             id: `${selectedSec._id}-${pref}`,
             title: `${selectedSec.name} (${pref})`,
-            floor: selectedSec.floor || 'Floor',
+            
             prefix: pref,
             tables: tbls,
           });
@@ -309,7 +305,7 @@ export const ReceptionDashboard: React.FC = () => {
         groups.push({
           id: selectedSec._id,
           title: selectedSec.name,
-          floor: selectedSec.floor || 'Floor',
+          
           prefix: '',
           tables: filteredTables,
         });
@@ -318,9 +314,19 @@ export const ReceptionDashboard: React.FC = () => {
     return groups;
   })();
 
+  // Generate unique active categories from the items
+  const uniqueCategoryNames = Array.from(new Set(
+    menuItems.map((item) => {
+      const itemCatId = typeof item.categoryId === 'string' ? item.categoryId : (item.categoryId as any)?._id || String(item.categoryId);
+      return (item.categoryName || categories.find((c) => String(c._id) === itemCatId)?.name || 'Uncategorized').trim().toLowerCase();
+    })
+  )).sort();
+
   // Filter menu
   const filteredMenu = menuItems.filter((item) => {
-    const matchesCat = selectedCategory === 'ALL' || item.categoryId === selectedCategory;
+    const itemCatId = typeof item.categoryId === 'string' ? item.categoryId : (item.categoryId as any)?._id || String(item.categoryId);
+    const itemCatName = (item.categoryName || categories.find((c) => String(c._id) === itemCatId)?.name || 'Uncategorized').trim().toLowerCase();
+    const matchesCat = selectedCategory === 'ALL' || itemCatId === selectedCategory || itemCatName === selectedCategory;
     const matchesSearch =
       searchQuery === '' ||
       item.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -328,12 +334,14 @@ export const ReceptionDashboard: React.FC = () => {
     return matchesCat && matchesSearch;
   });
 
-  // Group filtered menu by category
+  // Group filtered menu by category string name (avoids UUID mismatch issues)
   const groupedMenu = filteredMenu.reduce((acc, item) => {
-    if (!acc[item.categoryId]) {
-      acc[item.categoryId] = [];
+    const itemCatId = typeof item.categoryId === 'string' ? item.categoryId : (item.categoryId as any)?._id || String(item.categoryId);
+    const itemCatName = (item.categoryName || categories.find((c) => String(c._id) === itemCatId)?.name || 'Uncategorized').trim().toLowerCase();
+    if (!acc[itemCatName]) {
+      acc[itemCatName] = [];
     }
-    acc[item.categoryId].push(item);
+    acc[itemCatName].push(item);
     return acc;
   }, {} as Record<string, MenuItem[]>);
 
@@ -491,14 +499,14 @@ export const ReceptionDashboard: React.FC = () => {
                 </div>
               </div>
 
-              {/* Center: Quick-Jump Floor/Section Scroll Navigation */}
-              {groupedFloorSections.length > 0 && (
+              {/* Center: Quick-Jump Section Scroll Navigation */}
+              {groupedSections.length > 0 && (
                 <div className="flex items-center justify-center gap-1.5 overflow-x-auto px-1 py-0.5 no-scrollbar flex-1 max-w-2xl">
-                  {groupedFloorSections.map((group) => (
+                  {groupedSections.map((group) => (
                     <button
                       key={group.id}
                       onClick={() => {
-                        const el = document.getElementById(`floor-section-${group.id}`);
+                        const el = document.getElementById(`section-nav-${group.id}`);
                         if (el) {
                           el.scrollIntoView({ behavior: 'smooth', block: 'start' });
                         }
@@ -506,13 +514,8 @@ export const ReceptionDashboard: React.FC = () => {
                       className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-slate-100/90 hover:bg-amber-50 hover:border-amber-400 border border-slate-200 text-slate-700 hover:text-amber-900 font-bold text-[11px] transition-all whitespace-nowrap shrink-0 shadow-2xs active:scale-95 cursor-pointer"
                       title={`Click to jump down to ${group.title}`}
                     >
-                      <span className="w-1.5 h-1.5 rounded-full bg-amber-500 shrink-0" />
+                      
                       <span>{group.title}</span>
-                      {group.floor && group.floor !== 'Floor' && group.floor !== 'Selected Floor' && group.floor !== 'General Area' && (
-                        <span className="text-[10px] px-1.5 py-0.5 rounded bg-white text-slate-500 font-semibold border border-slate-200/80">
-                          {group.floor}
-                        </span>
-                      )}
                     </button>
                   ))}
                 </div>
@@ -580,10 +583,10 @@ export const ReceptionDashboard: React.FC = () => {
               </div>
             ) : (
               <div className="p-2 space-y-4 content-start w-full">
-                {groupedFloorSections.map((group) => (
-                  <div key={group.id} id={`floor-section-${group.id}`} className="w-full scroll-mt-12">
-                    {/* Compact Section/Floor Header Banner */}
-                    {groupedFloorSections.length > 0 && (
+                {groupedSections.map((group) => (
+                  <div key={group.id} id={`section-nav-${group.id}`} className="w-full scroll-mt-12">
+                    {/* Compact Section Header Banner */}
+                    {groupedSections.length > 0 && (
                       <div className="flex items-center justify-between pb-1 mb-1.5 border-b border-slate-200">
                         <div className="flex items-center gap-1.5">
                           <div className="w-4 h-4 rounded bg-slate-900 text-amber-400 flex items-center justify-center font-bold">
@@ -592,9 +595,7 @@ export const ReceptionDashboard: React.FC = () => {
                           <h4 className="font-extrabold text-slate-800 text-xs sm:text-sm tracking-tight">
                             {group.title}
                           </h4>
-                          <span className="text-[9px] font-extrabold text-amber-800 bg-amber-100/80 border border-amber-300/50 px-1 py-0.2 rounded">
-                            {group.floor}
-                          </span>
+                          
                         </div>
                         <span className="text-[9px] font-bold text-slate-500 bg-slate-100 border border-slate-200 px-1.5 py-0.2 rounded">
                           {group.tables.length} {group.tables.length === 1 ? 'Table' : 'Tables'}
@@ -602,7 +603,7 @@ export const ReceptionDashboard: React.FC = () => {
                       </div>
                     )}
 
-                    {/* Tables Grid for this Floor/Section */}
+                    {/* Tables Grid for this Section */}
                     <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-8 xl:grid-cols-10 2xl:grid-cols-12 gap-1.5 content-start w-full">
                       {group.tables.map((table) => {
                         const hasOrder = !!activeOrders[table._id] && activeOrders[table._id].total > 0;
@@ -703,7 +704,7 @@ export const ReceptionDashboard: React.FC = () => {
                       })}
                     </div>
 
-                    {/* Clean spacing before next floor */}
+                    
                     <div className="mb-3" />
                   </div>
                 ))}
@@ -794,7 +795,7 @@ export const ReceptionDashboard: React.FC = () => {
                   </span>
                 </div>
                 <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded bg-slate-200 text-slate-700">
-                  {categories.length}
+                  {uniqueCategoryNames.length}
                 </span>
               </div>
 
@@ -819,20 +820,24 @@ export const ReceptionDashboard: React.FC = () => {
                   </span>
                 </button>
 
-                {categories.map((cat) => {
-                  const count = menuItems.filter((item) => item.categoryId === cat._id).length;
-                  const isSelected = selectedCategory === cat._id;
+                {uniqueCategoryNames.map((catName) => {
+                  const count = menuItems.filter((item) => {
+                    const itemCatId = typeof item.categoryId === 'string' ? item.categoryId : (item.categoryId as any)?._id || String(item.categoryId);
+                    const itemName = (item.categoryName || categories.find((c) => String(c._id) === itemCatId)?.name || 'Uncategorized').trim().toLowerCase();
+                    return itemName === catName;
+                  }).length;
+                  const isSelected = selectedCategory === catName;
                   return (
                     <button
-                      key={cat._id}
-                      onClick={() => setSelectedCategory(cat._id)}
+                      key={catName}
+                      onClick={() => setSelectedCategory(catName)}
                       className={`w-full px-3 py-2.5 rounded-xl text-left text-xs font-bold transition-all flex items-center justify-between cursor-pointer ${
                         isSelected
                           ? 'bg-amber-500 text-slate-950 shadow-sm'
                           : 'bg-slate-50 text-slate-700 hover:bg-slate-100 border border-slate-100'
                       }`}
                     >
-                      <span className="truncate pr-2">{cat.name}</span>
+                      <span className="truncate pr-2">{catName}</span>
                       <span
                         className={`text-[10px] font-mono font-bold px-2 py-0.5 rounded-md shrink-0 ${
                           isSelected ? 'bg-slate-950/20 text-slate-950' : 'bg-slate-200 text-slate-700'
@@ -893,13 +898,12 @@ export const ReceptionDashboard: React.FC = () => {
                     </div>
                   </div>
                 ) : (
-                  Object.entries(groupedMenu).map(([categoryId, items]) => {
-                    const category = categories.find((c) => c._id === categoryId) || { _id: categoryId, name: 'Uncategorized' };
+                  Object.entries(groupedMenu).map(([categoryName, items]) => {
                     return (
-                      <div key={categoryId} className="space-y-3">
+                      <div key={categoryName} className="space-y-3">
                         <h3 className="font-extrabold text-sm text-slate-800 border-b border-slate-200 pb-1.5 flex items-center gap-2">
                           <span className="w-2 h-2 rounded-full bg-amber-500" />
-                          {category.name}
+                          {categoryName}
                         </h3>
                         <div className="grid grid-cols-2 lg:grid-cols-3 gap-3.5">
                           {items.map((item) => (

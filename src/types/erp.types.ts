@@ -19,7 +19,6 @@ export interface Staff {
 export interface BranchSection {
   _id?: string;
   name: string;
-  floor: string;
   tablesCount?: number;
   description?: string;
   [key: string]: any;
@@ -58,7 +57,6 @@ export interface Section {
   _id: string;
   branchId: string;
   name: string;
-  floor?: string;
   printerId?: string;
   [key: string]: any;
 }
@@ -204,7 +202,6 @@ export interface Printer {
   type: 'thermal' | 'ipp' | 'pdf';
   duty?: 'KOT' | 'RECEIPT' | 'BOTH';
   role?: string;
-  floor?: string;
   sections: string[];
   branchId?: string;
   isActive?: boolean;

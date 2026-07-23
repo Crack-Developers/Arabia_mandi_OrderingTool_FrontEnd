@@ -59,7 +59,6 @@ export const BranchConfig: React.FC = () => {
     'BRANCH' | 'USERS' | 'NOTIFICATIONS'
   >('BRANCH');
   const [newSectionName, setNewSectionName] = useState('');
-  const [newSectionFloor, setNewSectionFloor] = useState('Ground Floor');
   const [newSectionTables, setNewSectionTables] = useState<number>(10);
 
   // =========================================================================
@@ -122,11 +121,10 @@ export const BranchConfig: React.FC = () => {
     setManagerId('');
     setBranchStaffList([]);
     setBranchSections([
-      { name: 'Main Dining Hall', floor: 'Ground Floor', tablesCount: 12 },
-      { name: 'Family AC Dining', floor: 'First Floor', tablesCount: 8 },
+      { name: 'Main Dining Hall', tablesCount: 12 },
+      { name: 'Family AC Dining', tablesCount: 8 },
     ]);
     setNewSectionName('');
-    setNewSectionFloor('Ground Floor');
     setNewSectionTables(10);
     setIsBranchModalOpen(true);
   };
@@ -156,7 +154,7 @@ export const BranchConfig: React.FC = () => {
       b.sections && b.sections.length > 0
         ? b.sections
         : [
-            { name: 'Main Dining Hall', floor: 'Ground Floor', tablesCount: 12 },
+            { name: 'Main Dining Hall', tablesCount: 12 },
           ]
     );
     setIsBranchModalOpen(true);
@@ -173,7 +171,6 @@ export const BranchConfig: React.FC = () => {
       ...branchSections,
       {
         name: newSectionName.trim(),
-        floor: newSectionFloor,
         tablesCount: Number(newSectionTables) || 10,
       },
     ]);
@@ -181,9 +178,9 @@ export const BranchConfig: React.FC = () => {
     setNewSectionTables(10);
   };
 
-  const handleAddPresetSection = (name: string, floor: string, tablesCount: number) => {
+  const handleAddPresetSection = (name: string, tablesCount: number) => {
     if (branchSections.some((s) => s.name.toLowerCase() === name.toLowerCase())) return;
-    setBranchSections([...branchSections, { name, floor, tablesCount }]);
+    setBranchSections([...branchSections, { name, tablesCount }]);
   };
 
   const handleRemoveSection = (index: number) => {
@@ -698,7 +695,7 @@ export const BranchConfig: React.FC = () => {
                                     </span>
                                     {b.sections && b.sections.length > 0 && (
                                       <span className="text-[10px] font-bold text-red-600 bg-red-50 px-1.5 py-0.5 rounded border border-red-200">
-                                        {b.sections.length} {b.sections.length === 1 ? 'Floor/Area' : 'Floors/Areas'}
+                                        {b.sections.length} {b.sections.length === 1 ? 'Area' : 'Areas'}
                                       </span>
                                     )}
                                   </div>
@@ -1311,7 +1308,7 @@ export const BranchConfig: React.FC = () => {
                 <div className="flex items-center justify-between">
                   <h4 className="text-xs font-extrabold uppercase tracking-wider text-red-600 flex items-center gap-1.5">
                     <Layers className="w-4 h-4" />
-                    <span>2. Branch Sections & Dining Areas (Floors / Zones)</span>
+                    <span>2. Branch Sections & Dining Areas</span>
                   </h4>
                   <span className="text-[11px] font-bold text-slate-500 bg-slate-100 px-2.5 py-1 rounded-lg">
                     {branchSections.length} {branchSections.length === 1 ? 'Area' : 'Areas'} Added
@@ -1319,7 +1316,7 @@ export const BranchConfig: React.FC = () => {
                 </div>
 
                 <p className="text-xs text-slate-500">
-                  Define the floors and dining zones in this restaurant branch (e.g. Dining Hall, Garden Party Area, Rooftop Majlis).
+                  Define the dining zones in this restaurant branch (e.g. Dining Hall, Garden Party Area, Rooftop Majlis).
                 </p>
 
                 {/* Quick Add Presets */}
@@ -1327,21 +1324,21 @@ export const BranchConfig: React.FC = () => {
                   <span className="text-[11px] font-bold text-slate-600 block">Quick Add Preset Areas:</span>
                   <div className="flex flex-wrap gap-2">
                     {[
-                      { name: 'Main Dining Hall', floor: 'Ground Floor', tablesCount: 14 },
-                      { name: 'First Floor AC Dining', floor: 'First Floor', tablesCount: 10 },
-                      { name: 'Garden Party Area', floor: 'Outdoor / Garden', tablesCount: 10 },
-                      { name: 'Rooftop Majlis Lounge', floor: 'Rooftop', tablesCount: 8 },
-                      { name: 'VIP Family Hall', floor: 'First Floor', tablesCount: 6 },
-                      { name: 'Private Banquet Hall', floor: 'Second Floor', tablesCount: 12 },
+                      { name: 'Main Dining Hall', tablesCount: 14 },
+                      { name: 'AC Dining', tablesCount: 10 },
+                      { name: 'Garden Party Area', tablesCount: 10 },
+                      { name: 'Rooftop Majlis Lounge', tablesCount: 8 },
+                      { name: 'VIP Family Hall', tablesCount: 6 },
+                      { name: 'Private Banquet Hall', tablesCount: 12 },
                     ].map((preset) => (
                       <button
                         key={preset.name}
                         type="button"
-                        onClick={() => handleAddPresetSection(preset.name, preset.floor, preset.tablesCount)}
+                        onClick={() => handleAddPresetSection(preset.name, preset.tablesCount)}
                         className="px-3 py-1.5 bg-slate-100 hover:bg-red-50 hover:text-red-600 hover:border-red-200 border border-slate-200 text-slate-700 font-bold text-xs rounded-xl transition-all flex items-center gap-1 cursor-pointer"
                       >
                         <Plus className="w-3.5 h-3.5" />
-                        <span>{preset.name} ({preset.floor})</span>
+                        <span>{preset.name}</span>
                       </button>
                     ))}
                   </div>
@@ -1349,9 +1346,9 @@ export const BranchConfig: React.FC = () => {
 
                 {/* Custom Section Input Bar */}
                 <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200 space-y-3">
-                  <span className="text-xs font-extrabold text-slate-800 block">Add Custom Section / Floor</span>
+                  <span className="text-xs font-extrabold text-slate-800 block">Add Custom Section</span>
                   <div className="grid grid-cols-1 sm:grid-cols-12 gap-3">
-                    <div className="sm:col-span-5">
+                    <div className="sm:col-span-8">
                       <input
                         type="text"
                         value={newSectionName}
@@ -1360,21 +1357,8 @@ export const BranchConfig: React.FC = () => {
                         className="w-full px-3 py-2 rounded-xl border border-slate-300 bg-white text-xs font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-red-600"
                       />
                     </div>
-                    <div className="sm:col-span-4">
-                      <select
-                        value={newSectionFloor}
-                        onChange={(e) => setNewSectionFloor(e.target.value)}
-                        className="w-full px-3 py-2 rounded-xl border border-slate-300 bg-white text-xs font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-red-600 cursor-pointer"
-                      >
-                        <option value="Ground Floor">Ground Floor</option>
-                        <option value="First Floor">First Floor</option>
-                        <option value="Second Floor">Second Floor</option>
-                        <option value="Outdoor / Garden">Outdoor / Garden</option>
-                        <option value="Rooftop">Rooftop</option>
-                        <option value="Basement">Basement</option>
-                      </select>
-                    </div>
-                    <div className="sm:col-span-3 flex gap-2">
+                    
+                    <div className="sm:col-span-4 flex gap-2">
                       <input
                         type="number"
                         min="1"
@@ -1414,7 +1398,7 @@ export const BranchConfig: React.FC = () => {
                               {sec.name}
                             </p>
                             <p className="text-[10px] text-slate-500 font-medium">
-                              {sec.floor} • {sec.tablesCount || 10} Tables
+                              {sec.tablesCount || 10} Tables
                             </p>
                           </div>
                         </div>

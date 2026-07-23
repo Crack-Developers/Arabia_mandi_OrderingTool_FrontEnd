@@ -27,12 +27,10 @@ export const TableManagementScreen: React.FC = () => {
       ? currentBranch.sections.map((sec, idx) => ({
           _id: `sec-${idx + 1}`,
           name: sec.name,
-          floor: sec.floor || 'Ground Floor',
         }))
       : sections.map((sec) => ({
           _id: sec._id,
           name: sec.name,
-          floor: (sec as any).floor || 'Ground Floor',
         }));
 
   const displaySectionsMap = new Map<string, any>();
@@ -46,7 +44,6 @@ export const TableManagementScreen: React.FC = () => {
         displaySectionsMap.set(t.sectionName, {
           _id: t.sectionId !== 'NEW' && t.sectionId ? t.sectionId : `dyn-${t.sectionName}`,
           name: t.sectionName,
-          floor: (t as any).floor || 'Ground Floor',
         });
       }
     });
@@ -54,26 +51,19 @@ export const TableManagementScreen: React.FC = () => {
   const displaySections = Array.from(displaySectionsMap.values());
 
   const [filterSection, setFilterSection] = useState<string>('ALL');
-  const [filterFloor, setFilterFloor] = useState<string>('ALL');
 
   // Add Table Modal State
   const [showAddModal, setShowAddModal] = useState(false);
   const [tableNumber, setTableNumber] = useState('');
   const [sectionOption, setSectionOption] = useState<string>(displaySections[0]?._id || 'NEW');
   const [customSectionName, setCustomSectionName] = useState('');
-  const [customFloorName, setCustomFloorName] = useState('Ground Floor');
   const [capacity, setCapacity] = useState<number>(4);
 
   const branchTables = tables.filter(
     (t) => !currentBranch?._id || t.branchId === currentBranch._id || !t.branchId
   );
 
-  const floors = Array.from(new Set(displaySections.map((s) => s.floor || 'Ground Floor'))).filter(Boolean);
-
   const filtered = branchTables.filter((t) => {
-    const foundSec = displaySections.find((s) => s._id === t.sectionId || s.name === t.sectionName);
-    const tableFloor = foundSec?.floor || (t as any).floor || 'Ground Floor';
-    if (filterFloor !== 'ALL' && tableFloor !== filterFloor) return false;
     if (filterSection !== 'ALL') {
       const selectedSec = displaySections.find((s) => s._id === filterSection);
       return t.sectionId === filterSection || (selectedSec && t.sectionName === selectedSec.name);
@@ -81,19 +71,13 @@ export const TableManagementScreen: React.FC = () => {
     return true;
   });
 
-  // Group filtered tables by Floor -> Section for Multi-Floor Table Map
-  const groupedFloorMap: Record<string, { sectionName: string; floor: string; tables: typeof branchTables }[]> = {};
+  // Group filtered tables by Section
+  const groupedSectionMap: Record<string, typeof branchTables> = {};
   filtered.forEach((table) => {
     const foundSec = displaySections.find((sec) => sec._id === table.sectionId || sec.name === table.sectionName);
     const sectionName = foundSec?.name || table.sectionName || 'Dining Hall';
-    const floorName = foundSec?.floor || 'Ground Floor';
-    if (!groupedFloorMap[floorName]) groupedFloorMap[floorName] = [];
-    let secGroup = groupedFloorMap[floorName].find((g) => g.sectionName === sectionName);
-    if (!secGroup) {
-      secGroup = { sectionName, floor: floorName, tables: [] };
-      groupedFloorMap[floorName].push(secGroup);
-    }
-    secGroup.tables.push(table);
+    if (!groupedSectionMap[sectionName]) groupedSectionMap[sectionName] = [];
+    groupedSectionMap[sectionName].push(table);
   });
 
   const getStatusColor = (status: string) => {
@@ -117,16 +101,16 @@ export const TableManagementScreen: React.FC = () => {
 
   return (
     <div className="flex-1 p-6 overflow-y-auto bg-slate-100 min-h-[calc(100vh-4rem)] space-y-6">
-      {/* Top Banner & Multi-Floor Controls */}
+      {/* Top Banner Controls */}
       <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm space-y-4">
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
           <div>
             <h2 className="font-extrabold text-xl text-slate-900 flex items-center gap-2">
               <Grid3X3 className="w-6 h-6 text-amber-600" />
-              <span>Multi-Floor Table Map & Section Status</span>
+              <span>Table Map & Section Status</span>
             </h2>
             <p className="text-xs text-slate-500 mt-1">
-              Real-time occupancy monitoring across dining halls, family Majlis floors, and VIP rooms.
+              Real-time occupancy monitoring across dining halls, family Majlis, and VIP rooms.
             </p>
           </div>
 
@@ -136,126 +120,74 @@ export const TableManagementScreen: React.FC = () => {
                 setTableNumber(`T-${tables.length + 1}`);
                 setSectionOption(displaySections[0]?._id || 'NEW');
                 setCustomSectionName('');
-                setCustomFloorName('Ground Floor');
                 setCapacity(4);
                 setShowAddModal(true);
               }}
               className="px-4 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-slate-950 font-extrabold text-xs flex items-center gap-1.5 shadow-md transition-all shrink-0"
             >
               <Plus className="w-4 h-4" />
-              <span>+ Add Table / Floor</span>
+              <span>+ Add Table / Section</span>
             </button>
           </div>
         </div>
 
-        {/* Floor & Section Filter Bar */}
+        {/* Section Filter Bar */}
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 pt-3 border-t border-slate-100">
-          <div className="flex items-center gap-1.5 flex-wrap">
-            <span className="text-[11px] font-extrabold text-slate-400 uppercase tracking-wider mr-1">Floor:</span>
-            <button
-              onClick={() => { setFilterFloor('ALL'); setFilterSection('ALL'); }}
-              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${
-                filterFloor === 'ALL'
-                  ? 'bg-amber-500 text-slate-950 shadow-sm'
-                  : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
-              }`}
-            >
-              All Floors
-            </button>
-            {floors.map((fl) => (
-              <button
-                key={fl}
-                onClick={() => { setFilterFloor(fl); setFilterSection('ALL'); }}
-                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1 cursor-pointer ${
-                  filterFloor === fl
-                    ? 'bg-amber-500 text-slate-950 shadow-sm'
-                    : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
-                }`}
-              >
-                <Layers className="w-3 h-3" />
-                <span>{fl}</span>
-              </button>
-            ))}
-          </div>
-
-          <div className="flex items-center gap-1.5 flex-wrap">
+          <div className="flex items-center gap-2 flex-wrap">
             <span className="text-[11px] font-extrabold text-slate-400 uppercase tracking-wider mr-1">Section:</span>
             <button
               onClick={() => setFilterSection('ALL')}
               className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${
                 filterSection === 'ALL'
-                  ? 'bg-slate-900 text-white shadow-sm'
+                  ? 'bg-amber-500 text-slate-950 shadow-sm'
                   : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
               }`}
             >
               All Sections
             </button>
             {displaySections
-              .filter((s) => filterFloor === 'ALL' || s.floor === filterFloor)
               .map((s) => (
                 <button
                   key={s._id}
-                  onClick={() => setFilterSection(s._id)}
-                  className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
+                  onClick={() => setFilterSection(s._id!)}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1 cursor-pointer ${
                     filterSection === s._id
-                      ? 'bg-slate-900 text-white shadow-sm'
+                      ? 'bg-amber-500 text-slate-950 shadow-sm ring-2 ring-amber-500 ring-offset-1'
                       : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
                   }`}
                 >
                   <span>{s.name}</span>
-                  {s.floor && filterFloor === 'ALL' && (
-                    <span
-                      className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${
-                        filterSection === s._id
-                          ? 'bg-slate-800 text-amber-300'
-                          : 'bg-slate-200 text-slate-600'
-                      }`}
-                    >
-                      {s.floor}
-                    </span>
-                  )}
                 </button>
               ))}
           </div>
         </div>
       </div>
-
-      {/* Multi-Floor Table Map Grid */}
+        {/* Table Map Grid */}
       {filtered.length === 0 ? (
         <div className="p-12 text-center bg-white rounded-3xl border border-slate-200 shadow-2xs">
           <Grid3X3 className="w-12 h-12 text-slate-300 mx-auto mb-3" />
           <p className="text-base font-bold text-slate-700">No tables found matching criteria</p>
-          <p className="text-xs text-slate-400 mt-1">Select another floor or section, or add a new table above.</p>
+          <p className="text-xs text-slate-400 mt-1">Select another section, or add a new table above.</p>
         </div>
       ) : (
         <div className="space-y-8">
-          {Object.entries(groupedFloorMap).map(([floorName, sectionsInFloor]) => (
-            <div key={floorName} className="space-y-4">
-              {/* Floor Header Badge */}
+          {Object.entries(groupedSectionMap).map(([sectionName, tablesInSection]) => (
+            <div key={sectionName} className="space-y-4">
               <div className="flex items-center gap-3">
                 <div className="px-3.5 py-1.5 rounded-xl bg-slate-900 text-amber-400 font-extrabold text-sm flex items-center gap-2 shadow-sm">
                   <Layers className="w-4 h-4 text-amber-400" />
-                  <span>🏢 {floorName}</span>
+                  <span>🍽️ {sectionName}</span>
+                  <span className="text-xs font-semibold text-slate-400">({tablesInSection.length} tables)</span>
                 </div>
                 <div className="h-px bg-slate-200 flex-1" />
               </div>
 
-              {sectionsInFloor.map((secGroup) => (
-                <div key={`${floorName}-${secGroup.sectionName}`} className="space-y-3 pl-2 sm:pl-4 border-l-2 border-amber-500/30">
-                  <div className="flex items-center justify-between">
-                    <h3 className="font-extrabold text-sm text-slate-800 flex items-center gap-2">
-                      <span className="w-2 h-2 rounded-full bg-amber-500 inline-block" />
-                      <span>{secGroup.sectionName}</span>
-                      <span className="text-xs font-semibold text-slate-400">({secGroup.tables.length} tables)</span>
-                    </h3>
-                  </div>
-
+              <div className="space-y-3 pl-2 sm:pl-4 border-l-2 border-amber-500/30">
                   <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-                    {secGroup.tables.map((table) => {
+                    {tablesInSection.map((table) => {
                       const order = activeOrders[table._id];
                       const foundSec = displaySections.find((sec) => sec._id === table.sectionId || sec.name === table.sectionName);
                       const sectionName = foundSec?.name || table.sectionName || 'Dining Hall';
-                      const floorName = foundSec?.floor || 'Ground Floor';
                       const hasOrder = !!order && order.total > 0;
                       const effectiveStatus = table.status === 'Hold' || order?.status === 'Hold' || (hasOrder && table.status === 'Available')
                         ? 'Hold'
@@ -279,9 +211,6 @@ export const TableManagementScreen: React.FC = () => {
                             </div>
                             <div className="flex items-center gap-2 mt-1">
                               <span className="text-xs text-slate-700 font-bold">{sectionName}</span>
-                              <span className="text-[10px] bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded font-medium border border-slate-200">
-                                {floorName}
-                              </span>
                             </div>
                             <p className="text-[11px] text-slate-500 mt-0.5">Capacity: {table.capacity} guests</p>
 
@@ -333,7 +262,6 @@ export const TableManagementScreen: React.FC = () => {
                     })}
                   </div>
                 </div>
-              ))}
             </div>
           ))}
         </div>
@@ -350,7 +278,7 @@ export const TableManagementScreen: React.FC = () => {
                 </div>
                 <div>
                   <h3 className="font-extrabold text-base">Add New Table</h3>
-                  <p className="text-[11px] text-slate-400">Configure dining floor/section & seating capacity</p>
+                  <p className="text-[11px] text-slate-400">Configure dining section & seating capacity</p>
                 </div>
               </div>
               <button
@@ -370,7 +298,7 @@ export const TableManagementScreen: React.FC = () => {
                   tableNumber: tableNumber.trim(),
                   sectionId: sectionOption,
                   sectionName: customSectionName.trim(),
-                  floor: customFloorName.trim(),
+                  
                   capacity,
                 });
                 setShowAddModal(false);
@@ -381,7 +309,7 @@ export const TableManagementScreen: React.FC = () => {
               <div>
                 <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-2 flex items-center gap-1.5">
                   <Layers className="w-3.5 h-3.5 text-amber-600" />
-                  <span>Section / Floor (e.g., Ground Floor, 1st Floor)</span>
+                  <span>Section (e.g., Dining Hall, VIP Area)</span>
                 </label>
                 <select
                   value={sectionOption}
@@ -390,29 +318,17 @@ export const TableManagementScreen: React.FC = () => {
                 >
                   {displaySections.map((sec) => (
                     <option key={sec._id} value={sec._id}>
-                      {sec.name} ({sec.floor})
+                      {sec.name}
                     </option>
                   ))}
-                  <option value="NEW">+ Create New Floor / Section...</option>
+                  <option value="NEW">+ Create New Section...</option>
                 </select>
               </div>
 
               {/* Custom Section Name Input if "NEW" */}
               {sectionOption === 'NEW' && (
                 <div className="p-3.5 rounded-2xl bg-amber-50/70 border border-amber-200/80 space-y-3">
-                  <div className="space-y-1.5">
-                    <label className="block text-xs font-extrabold text-amber-900">
-                      New Floor Name
-                    </label>
-                    <input
-                      type="text"
-                      required
-                      placeholder="e.g., Ground Floor, 1st Floor, Rooftop"
-                      value={customFloorName}
-                      onChange={(e) => setCustomFloorName(e.target.value)}
-                      className="w-full px-3 py-2 rounded-lg border border-amber-300 bg-white text-sm font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-amber-500"
-                    />
-                  </div>
+                  
                   <div className="space-y-1.5">
                     <label className="block text-xs font-extrabold text-amber-900">
                       New Section Name
