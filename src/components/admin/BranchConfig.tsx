@@ -173,11 +173,6 @@ export const BranchConfig: React.FC = () => {
     setNewSectionTables(10);
   };
 
-  const handleAddPresetSection = (name: string, tablesCount: number) => {
-    if (branchSections.some((s) => s.name.toLowerCase() === name.toLowerCase())) return;
-    setBranchSections([...branchSections, { name, tablesCount }]);
-  };
-
   const handleRemoveSection = (index: number) => {
     if (!window.confirm('Remove this section? All its tables will also be deleted from the cloud when you save.')) return;
     const updated = [...branchSections];

@@ -4,7 +4,7 @@
  * Base URL: http://localhost:5000/api/v1
  */
 
-const getBaseUrl = (): string => {
+export const getBaseUrl = (): string => {
   // Electron desktop app: preload.js sets this to http://localhost:3001/api/v1
   // Called on every request so Electron URL is always used even if injected late.
   if ((window as any).__ELECTRON_LOCAL_API__) return (window as any).__ELECTRON_LOCAL_API__;
