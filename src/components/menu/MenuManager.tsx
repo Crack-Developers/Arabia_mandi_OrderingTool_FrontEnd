@@ -135,11 +135,17 @@ export const MenuManager: React.FC = () => {
       let successCount = 0;
 
       for (const row of jsonData) {
-        const dishName = row['Dish Name'] || row['Name'] || row['dish'] || row['name'];
-        const category = row['Category'] || row['category'] || row['Category Name'];
-        const price = parseFloat(row['Price'] || row['price'] || row['Base Price'] || '0');
-        const tax = parseFloat(row['Tax'] || row['tax'] || row['Tax Rate'] || '0');
-        const core = row['Core'] || row['core'] ? parseInt(row['Core'] || row['core'], 10) : undefined;
+        const lowerRow: any = {};
+        Object.keys(row).forEach(k => {
+          lowerRow[k.trim().toLowerCase()] = row[k];
+        });
+
+        const dishName = lowerRow['dish name'] || lowerRow['name'] || lowerRow['dish'];
+        const category = lowerRow['category'] || lowerRow['category name'];
+        const price = parseFloat(lowerRow['price'] || lowerRow['prices'] || lowerRow['base price'] || '0');
+        const tax = parseFloat(lowerRow['tax'] || lowerRow['tax rate'] || '0');
+        const coreVal = lowerRow['core'];
+        const core = coreVal !== undefined && coreVal !== null && coreVal !== '' ? parseInt(coreVal, 10) : undefined;
 
         if (!dishName || !category) continue;
 
