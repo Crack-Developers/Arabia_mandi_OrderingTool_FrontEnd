@@ -195,7 +195,7 @@ export const TableManagementScreen: React.FC = () => {
                               const branch = state.branches.find((b:any) => String(b._id) === String(bId));
                               if (branch && branch.sections) {
                                 const secIndex = branch.sections.findIndex((s:any) => s.name === sectionName);
-                                if (secIndex >= 0 && branch.sections[secIndex].tablesCount > 0) {
+                                if (secIndex >= 0 && branch.sections[secIndex]?.tablesCount > 0) {
                                   const updatedBranch = JSON.parse(JSON.stringify(branch));
                                   updatedBranch.sections[secIndex].tablesCount--;
                                   fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3001/api/v1'}/branches/${bId}`, {
@@ -263,7 +263,7 @@ export const TableManagementScreen: React.FC = () => {
                                           const branch = state.branches.find((b:any) => String(b._id) === String(bId));
                                           if (branch && branch.sections) {
                                             const secIndex = branch.sections.findIndex((s:any) => s.name === sectionName);
-                                            if (secIndex >= 0 && branch.sections[secIndex].tablesCount > 0) {
+                                            if (secIndex >= 0 && branch.sections[secIndex]?.tablesCount > 0) {
                                               const updatedBranch = JSON.parse(JSON.stringify(branch));
                                               updatedBranch.sections[secIndex].tablesCount--;
                                               fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3001/api/v1'}/branches/${bId}`, {
