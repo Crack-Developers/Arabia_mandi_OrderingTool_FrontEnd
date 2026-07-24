@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useERPStore } from '../../stores/erp.store';
-import { Grid3X3, Plus, X, Layers, Users } from 'lucide-react';
+import { Grid3X3, Plus, X, Layers, Users, Trash2 } from 'lucide-react';
+import { tableApi } from '../../services/api.service';
 
 export const TableManagementScreen: React.FC = () => {
   const {
@@ -174,17 +175,60 @@ export const TableManagementScreen: React.FC = () => {
           {Object.entries(groupedSectionMap).map(([sectionName, tablesInSection]) => (
             <div key={sectionName} className="space-y-4">
               <div className="flex items-center gap-3">
-                <div className="px-3.5 py-1.5 rounded-xl bg-slate-900 text-amber-400 font-extrabold text-sm flex items-center gap-2 shadow-sm">
+                <div className="group/header px-3.5 py-1.5 rounded-xl bg-slate-900 text-amber-400 font-extrabold text-sm flex items-center gap-2 shadow-sm">
                   <Layers className="w-4 h-4 text-amber-400" />
                   <span>🍽️ {sectionName}</span>
                   <span className="text-xs font-semibold text-slate-400">({tablesInSection.length} tables)</span>
+                  <span
+                    className="opacity-0 group-hover/header:opacity-100 transition-opacity flex items-center justify-center ml-2 p-1 rounded hover:bg-slate-800 cursor-pointer"
+                    onClick={async (e) => {
+                      e.stopPropagation();
+                      if (window.confirm(`Are you sure you want to delete ALL ${tablesInSection.length} tables in ${sectionName}? This cannot be undone.`)) {
+                        try {
+                          for (const tbl of tablesInSection) {
+                            await tableApi.delete(tbl._id);
+                            
+                            // Decrement section tablesCount
+                            const bId = tbl.branchId || currentBranch?._id;
+                            const state = useERPStore.getState();
+                            if (bId && state.branches) {
+                              const branch = state.branches.find((b:any) => String(b._id) === String(bId));
+                              if (branch && branch.sections) {
+                                const secIndex = branch.sections.findIndex((s:any) => s.name === sectionName);
+                                if (secIndex >= 0 && branch.sections[secIndex].tablesCount > 0) {
+                                  const updatedBranch = JSON.parse(JSON.stringify(branch));
+                                  updatedBranch.sections[secIndex].tablesCount--;
+                                  fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3001/api/v1'}/branches/${bId}`, {
+                                    method: 'PUT',
+                                    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('erp_token')}` },
+                                    body: JSON.stringify(updatedBranch)
+                                  }).catch(console.error);
+                                }
+                              }
+                            }
+                          }
+                          const idsToRemove = new Set(tablesInSection.map((t: any) => t._id));
+                          useERPStore.setState((state: any) => ({
+                            tables: state.tables.filter((t: any) => !idsToRemove.has(t._id))
+                          }));
+                        } catch (err) {
+                          console.error('Failed to delete section tables:', err);
+                          alert('Failed to delete some tables. Please try again.');
+                        }
+                      }
+                    }}
+                  >
+                    <Trash2 className="w-4 h-4 text-slate-500 hover:text-red-500 transition-colors" />
+                  </span>
                 </div>
                 <div className="h-px bg-slate-200 flex-1" />
               </div>
 
               <div className="space-y-3 pl-2 sm:pl-4 border-l-2 border-amber-500/30">
                   <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-                    {tablesInSection.map((table) => {
+                    {[...tablesInSection]
+                      .sort((a, b) => (a.tableNumber || '').localeCompare(b.tableNumber || '', undefined, { numeric: true }))
+                      .map((table) => {
                       const order = activeOrders[table._id];
                       const foundSec = displaySections.find((sec) => sec._id === table.sectionId || sec.name === table.sectionName);
                       const sectionName = foundSec?.name || table.sectionName || 'Dining Hall';
@@ -196,14 +240,51 @@ export const TableManagementScreen: React.FC = () => {
                       return (
                         <div
                           key={table._id}
-                          className={`p-5 rounded-2xl border-2 transition-all bg-white flex flex-col justify-between space-y-4 shadow-2xs hover:shadow-md ${getStatusColor(
+                          className={`group p-5 rounded-2xl border-2 transition-all bg-white flex flex-col justify-between space-y-4 shadow-2xs hover:shadow-md ${getStatusColor(
                             effectiveStatus
                           )}`}
                         >
                           <div>
                             <div className="flex items-center justify-between">
-                              <span className="font-extrabold text-lg text-slate-900">
+                              <span className="font-extrabold text-lg text-slate-900 flex items-center gap-2">
                                 Table {table.tableNumber}
+                                <Trash2
+                                  className="w-4 h-4 text-slate-300 hover:text-red-500 cursor-pointer opacity-0 group-hover:opacity-100 transition-opacity"
+                                  onClick={async (e) => {
+                                    e.stopPropagation();
+                                    if (window.confirm('Are you sure you want to delete this table?')) {
+                                      try {
+                                        await tableApi.delete(table._id);
+                                        
+                                        // Decrement section tablesCount
+                                        const bId = table.branchId || currentBranch?._id;
+                                        const state = useERPStore.getState();
+                                        if (bId && state.branches) {
+                                          const branch = state.branches.find((b:any) => String(b._id) === String(bId));
+                                          if (branch && branch.sections) {
+                                            const secIndex = branch.sections.findIndex((s:any) => s.name === sectionName);
+                                            if (secIndex >= 0 && branch.sections[secIndex].tablesCount > 0) {
+                                              const updatedBranch = JSON.parse(JSON.stringify(branch));
+                                              updatedBranch.sections[secIndex].tablesCount--;
+                                              fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3001/api/v1'}/branches/${bId}`, {
+                                                method: 'PUT',
+                                                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('erp_token')}` },
+                                                body: JSON.stringify(updatedBranch)
+                                              }).catch(console.error);
+                                            }
+                                          }
+                                        }
+
+                                        useERPStore.setState((state: any) => ({
+                                          tables: state.tables.filter((t: any) => t._id !== table._id)
+                                        }));
+                                      } catch (err) {
+                                        console.error('Failed to delete table:', err);
+                                        alert('Failed to delete table. Please try again.');
+                                      }
+                                    }
+                                  }}
+                                />
                               </span>
                               <span className="px-2.5 py-1 rounded-full bg-white/80 font-bold text-xs shadow-sm uppercase">
                                 {effectiveStatus === 'Hold' ? 'ON HOLD' : table.status}
