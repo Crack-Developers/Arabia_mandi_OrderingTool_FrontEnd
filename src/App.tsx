@@ -10,6 +10,7 @@ import { DishSummaryPage } from './components/admin/DishSummaryPage';
 import { PrintModal } from './components/pos/PrintModal';
 import { PrinterMenuRoutingPage } from './components/printers/PrinterMenuRoutingPage';
 import { PrinterManagementDashboard } from './components/printers/PrinterManagementDashboard';
+import { initCloudSocket, disconnectCloudSocket } from './services/socket.service';
 
 export function App() {
   const {
@@ -42,11 +43,15 @@ export function App() {
       fetchStaffList();
       fetchPrinters();
       checkSyncStatus();
+      initCloudSocket();
 
       const syncInterval = setInterval(() => {
         checkSyncStatus();
       }, 10_000);
-      return () => clearInterval(syncInterval);
+      return () => {
+        clearInterval(syncInterval);
+        disconnectCloudSocket();
+      };
     }
   }, [isAuthenticated, currentUser?.branchId]);
 
