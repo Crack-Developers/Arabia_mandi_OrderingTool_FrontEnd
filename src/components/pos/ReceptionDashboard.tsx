@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useERPStore } from '../../stores/erp.store';
+import { tableApi } from '../../services/api.service';
 import type { MenuItem } from '../../types/erp.types';
 import {
   Search,
@@ -673,26 +674,46 @@ export const ReceptionDashboard: React.FC = () => {
                                   <Edit3 className="w-2 h-2 opacity-0 group-hover:opacity-70 text-slate-700 shrink-0 transition-opacity" />
                                 </span>
                               </div>
-                              <span
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  if (clickTimerRef.current[table._id]) {
-                                    clearTimeout(clickTimerRef.current[table._id]);
-                                    delete clickTimerRef.current[table._id];
-                                  }
-                                  setEditingTableModal({
-                                    isOpen: true,
-                                    tableId: table._id,
-                                    currentName: table.tableNumber,
-                                    currentCapacity: table.capacity || 4,
-                                    focusField: 'capacity'
-                                  });
-                                }}
-                                className="text-[9px] font-extrabold px-1 py-0 rounded bg-white/90 text-slate-700 hover:bg-amber-100 hover:text-amber-900 transition-all cursor-pointer flex items-center gap-0.5 border border-transparent hover:border-amber-300 shrink-0"
-                                title="Click to change seating capacity"
-                              >
-                                <span>{table.capacity}p</span>
-                              </span>
+                              <div className="flex items-center gap-0.5">
+                                <span
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    if (clickTimerRef.current[table._id]) {
+                                      clearTimeout(clickTimerRef.current[table._id]);
+                                      delete clickTimerRef.current[table._id];
+                                    }
+                                    setEditingTableModal({
+                                      isOpen: true,
+                                      tableId: table._id,
+                                      currentName: table.tableNumber,
+                                      currentCapacity: table.capacity || 4,
+                                      focusField: 'capacity'
+                                    });
+                                  }}
+                                  className="text-[9px] font-extrabold px-1 py-0 rounded bg-white/90 text-slate-700 hover:bg-amber-100 hover:text-amber-900 transition-all cursor-pointer flex items-center gap-0.5 border border-transparent hover:border-amber-300 shrink-0"
+                                  title="Click to change seating capacity"
+                                >
+                                  <span>{table.capacity}p</span>
+                                </span>
+                                <span
+                                  onClick={async (e) => {
+                                    e.stopPropagation();
+                                    if (window.confirm('Are you sure you want to delete this table?')) {
+                                      try {
+                                        await tableApi.delete(table._id);
+                                        useERPStore.setState((state: any) => ({ tables: state.tables.filter((t: any) => t._id !== table._id) }));
+                                      } catch (err) {
+                                        console.error('Failed to delete table:', err);
+                                        alert('Failed to delete table. Please try again.');
+                                      }
+                                    }
+                                  }}
+                                  className="p-0.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors opacity-0 group-hover:opacity-100 cursor-pointer"
+                                  title="Delete Table"
+                                >
+                                  <Trash2 className="w-3 h-3" />
+                                </span>
+                              </div>
                             </div>
 
                             {/* Details */}
