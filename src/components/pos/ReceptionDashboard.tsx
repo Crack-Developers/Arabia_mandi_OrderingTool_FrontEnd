@@ -115,25 +115,47 @@ export const ReceptionDashboard: React.FC = () => {
   const [quickDishCore, setQuickDishCore] = useState<string>('');
   const [editingDishId, setEditingDishId] = useState<string | null>(null);
 
-  const handleQuickCreateOrEditDish = (e: React.FormEvent) => {
+  const handleQuickCreateOrEditDish = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!quickDishName.trim()) return;
+
+    let finalCatId = quickAddCatId || categories[0]?._id || 'cat-1';
+    const isValid = categories.some(c => String(c._id) === String(finalCatId));
+
+    if (!isValid && finalCatId !== 'cat-1') {
+      try {
+        const newCat = await useERPStore.getState().addCategory(finalCatId);
+        finalCatId = String(newCat._id || newCat);
+      } catch (err) {
+        console.error("Failed to dynamically create ghost category", err);
+      }
+    } else if (!quickAddCatId && selectedCategory !== 'ALL') {
+      const matched = categories.find(c => c.name.trim().toLowerCase() === selectedCategory.toLowerCase());
+      if (matched) {
+        finalCatId = String(matched._id);
+      } else {
+        try {
+          const newCat = await useERPStore.getState().addCategory(selectedCategory);
+          finalCatId = String(newCat._id || newCat);
+        } catch (err) {
+          finalCatId = selectedCategory;
+        }
+      }
+    }
+
     if (editingDishId) {
       useERPStore.getState().updateMenuItem(editingDishId, {
         name: quickDishName.trim(),
+        categoryId: finalCatId,
         taxRate: parseFloat(quickDishTax) || 0,
         core: quickDishCore.trim() !== '' ? parseInt(quickDishCore, 10) : undefined,
         variants: [{ name: 'Standard / Base', price: parseFloat(quickDishPrice) || 0 }],
       });
     } else {
-      const targetCatId =
-        quickAddCatId ||
-        (selectedCategory !== 'ALL' ? selectedCategory : categories[0]?._id || 'cat-1');
-
       addMenuItem({
         name: quickDishName.trim(),
         description: 'Quick added dish from POS shortcut',
-        categoryId: targetCatId,
+        categoryId: finalCatId,
         available: true,
         active: true,
         taxRate: parseFloat(quickDishTax) || 0,
@@ -311,6 +333,9 @@ export const ReceptionDashboard: React.FC = () => {
         });
       }
     }
+    groups.forEach(g => {
+      g.tables.sort((a, b) => a.tableNumber.localeCompare(b.tableNumber, undefined, { numeric: true, sensitivity: 'base' }));
+    });
     return groups;
   })();
 
@@ -868,8 +893,21 @@ export const ReceptionDashboard: React.FC = () => {
                 <button
                   type="button"
                   onClick={() => {
-                    const defaultCat =
-                      selectedCategory !== 'ALL' ? selectedCategory : categories[0]?._id || 'cat-1';
+                    let defaultCat = categories[0]?._id || 'cat-1';
+                    if (selectedCategory !== 'ALL') {
+                      const matched = categories.find(c => c.name.trim().toLowerCase() === selectedCategory.toLowerCase());
+                      if (matched) {
+                        defaultCat = String(matched._id);
+                      } else {
+                        const sampleItem = menuItems.find(item => {
+                          const itemCatId = typeof item.categoryId === 'string' ? item.categoryId : (item.categoryId as any)?._id || String(item.categoryId);
+                          const itemCatName = (item.categoryName || categories.find((c) => String(c._id) === itemCatId)?.name || 'Uncategorized').trim().toLowerCase();
+                          return itemCatName === selectedCategory.toLowerCase();
+                        });
+                        if (sampleItem) defaultCat = typeof sampleItem.categoryId === 'string' ? sampleItem.categoryId : (sampleItem.categoryId as any)?._id || String(sampleItem.categoryId);
+                        else defaultCat = selectedCategory;
+                      }
+                    }
                     setQuickAddCatId(defaultCat);
                     setQuickDishName('');
                     setQuickDishPrice('450');
@@ -1876,15 +1914,29 @@ export const ReceptionDashboard: React.FC = () => {
             </div>
 
             <form onSubmit={handleQuickCreateOrEditDish} className="space-y-4">
-              {/* Locked Category Display */}
+              {/* Category Selector */}
               <div className="p-3.5 bg-amber-50 border border-amber-200/80 rounded-2xl flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <span className="w-2.5 h-2.5 rounded-full bg-amber-500 animate-pulse" />
                   <span className="text-xs font-bold text-slate-800">Target Category:</span>
                 </div>
-                <span className="px-3 py-1 bg-white rounded-xl border border-amber-300 text-xs font-black text-amber-900 shadow-2xs">
-                  {categories.find((c) => c._id === (quickAddCatId || selectedCategory))?.name || 'Active Category'}
-                </span>
+                <select
+                  value={
+                    (quickAddCatId && quickAddCatId !== 'cat-1')
+                      ? quickAddCatId 
+                      : (categories.find(c => c.name.trim().toLowerCase() === selectedCategory.toLowerCase())?._id || '')
+                  }
+                  onChange={(e) => setQuickAddCatId(e.target.value)}
+                  className="px-3 py-1.5 bg-white rounded-xl border border-amber-300 text-xs font-black text-amber-900 shadow-2xs focus:outline-none focus:ring-2 focus:ring-amber-500 cursor-pointer"
+                  required
+                >
+                  <option value="" disabled>Select Category...</option>
+                  {uniqueCategoryNames.map(catName => {
+                     const realCat = categories.find(c => c.name.trim().toLowerCase() === catName);
+                     const val = realCat ? String(realCat._id) : catName;
+                     return <option key={catName} value={val}>{catName.charAt(0).toUpperCase() + catName.slice(1)}</option>;
+                  })}
+                </select>
               </div>
 
               {/* Dish Name */}

@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { useERPStore } from '../../stores/erp.store';
-import { UtensilsCrossed, Plus, CheckCircle2, XCircle, Tag, Printer as PrinterIcon, Trash2 } from 'lucide-react';
+import { UtensilsCrossed, Plus, CheckCircle2, XCircle, Tag, Printer as PrinterIcon, Trash2, Upload } from 'lucide-react';
+import * as XLSX from 'xlsx';
+import { toast } from 'sonner';
 
 export const MenuManager: React.FC = () => {
   const {
@@ -24,6 +26,8 @@ export const MenuManager: React.FC = () => {
 
   const [selectedCat, setSelectedCat] = useState<string>('ALL');
   const [showAddModal, setShowAddModal] = useState(false);
+  
+  const fileInputRef = React.useRef<HTMLInputElement>(null);
 
   // New item form
   const [name, setName] = useState('');
@@ -117,6 +121,67 @@ export const MenuManager: React.FC = () => {
     setShowAddModal(false);
   };
 
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    try {
+      const data = await file.arrayBuffer();
+      const workbook = XLSX.read(data);
+      const firstSheetName = workbook.SheetNames[0];
+      const worksheet = workbook.Sheets[firstSheetName];
+      const jsonData = XLSX.utils.sheet_to_json<any>(worksheet);
+
+      let successCount = 0;
+
+      for (const row of jsonData) {
+        const dishName = row['Dish Name'] || row['Name'] || row['dish'] || row['name'];
+        const category = row['Category'] || row['category'] || row['Category Name'];
+        const price = parseFloat(row['Price'] || row['price'] || row['Base Price'] || '0');
+        const tax = parseFloat(row['Tax'] || row['tax'] || row['Tax Rate'] || '0');
+        const core = row['Core'] || row['core'] ? parseInt(row['Core'] || row['core'], 10) : undefined;
+
+        if (!dishName || !category) continue;
+
+        let matchedCat = activeCategories.find(
+          (c) => c.name.trim().toLowerCase() === String(category).trim().toLowerCase()
+        );
+
+        if (!matchedCat) {
+          try {
+            matchedCat = await addCategory(String(category).trim());
+          } catch(err) {
+            console.error("Failed to add category from Excel", err);
+          }
+        }
+
+        const effCategoryId = matchedCat ? String(matchedCat._id || matchedCat) : (activeCategories[0]?._id || 'cat-1');
+
+        await addMenuItem({
+          name: String(dishName).trim(),
+          description: 'Uploaded from Excel',
+          categoryId: effCategoryId,
+          available: true,
+          active: true,
+          taxRate: isNaN(tax) ? 0 : tax,
+          variants: [{ name: 'Standard / Base', price: isNaN(price) ? 0 : price }],
+          addons: [],
+          core: isNaN(core as any) ? undefined : core,
+        });
+        successCount++;
+      }
+
+      toast.success(`Successfully uploaded ${successCount} dishes!`);
+    } catch (error) {
+      console.error(error);
+      toast.error('Failed to parse Excel file');
+    }
+
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
+  };
+
   return (
     <div className="flex-1 p-6 overflow-y-auto bg-slate-100 min-h-[calc(100vh-4rem)] space-y-6">
       {/* Top Bar */}
@@ -131,13 +196,29 @@ export const MenuManager: React.FC = () => {
           </p>
         </div>
 
-        <button
-          onClick={() => setShowAddModal(true)}
-          className="px-4 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold flex items-center gap-2 shadow-md transition-all cursor-pointer"
-        >
-          <Plus className="w-4 h-4 text-amber-400" />
-          <span>Add New Mandi Dish</span>
-        </button>
+        <div className="flex items-center gap-3">
+          <input
+            type="file"
+            accept=".xlsx, .xls, .csv"
+            className="hidden"
+            ref={fileInputRef}
+            onChange={handleFileUpload}
+          />
+          <button
+            onClick={() => fileInputRef.current?.click()}
+            className="px-4 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold flex items-center gap-2 shadow-md transition-all cursor-pointer"
+          >
+            <Upload className="w-4 h-4 text-indigo-200" />
+            <span>Upload Excel</span>
+          </button>
+          <button
+            onClick={() => setShowAddModal(true)}
+            className="px-4 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold flex items-center gap-2 shadow-md transition-all cursor-pointer"
+          >
+            <Plus className="w-4 h-4 text-amber-400" />
+            <span>Add New Mandi Dish</span>
+          </button>
+        </div>
       </div>
 
       {/* Categories Bar */}
