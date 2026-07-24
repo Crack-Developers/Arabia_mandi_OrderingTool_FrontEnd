@@ -618,8 +618,31 @@ export const ReceptionDashboard: React.FC = () => {
                           <div className="w-4 h-4 rounded bg-slate-900 text-amber-400 flex items-center justify-center font-bold">
                             <LayoutGrid className="w-2.5 h-2.5" />
                           </div>
-                          <h4 className="font-extrabold text-slate-800 text-xs sm:text-sm tracking-tight">
+                          <h4 className="font-extrabold text-slate-800 text-xs sm:text-sm tracking-tight flex items-center gap-2 group/header cursor-default">
                             {group.title}
+                            <span
+                              className="opacity-0 group-hover/header:opacity-100 transition-opacity flex items-center justify-center p-1 rounded hover:bg-red-50 group/btn cursor-pointer"
+                              title={`Delete all tables in ${group.title}`}
+                              onClick={async (e) => {
+                                e.stopPropagation();
+                                if (window.confirm(`Are you sure you want to delete ALL ${group.tables.length} tables in ${group.title}? This cannot be undone.`)) {
+                                  try {
+                                    for (const tbl of group.tables) {
+                                      await tableApi.delete(tbl._id);
+                                    }
+                                    const idsToRemove = new Set(group.tables.map(t => t._id));
+                                    useERPStore.setState((state: any) => ({
+                                      tables: state.tables.filter((t: any) => !idsToRemove.has(t._id))
+                                    }));
+                                  } catch (err) {
+                                    console.error('Failed to delete group tables:', err);
+                                    alert('Failed to delete some tables. Please try again.');
+                                  }
+                                }
+                              }}
+                            >
+                              <Trash2 className="w-3.5 h-3.5 text-slate-300 group-hover/btn:text-red-500 transition-colors" />
+                            </span>
                           </h4>
                           
                         </div>
