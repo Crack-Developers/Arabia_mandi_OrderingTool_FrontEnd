@@ -668,6 +668,9 @@ export const useERPStore = create<ERPState>()(
     const updated = get().branches.map((b) => b._id === id ? { ...b, ...patch } : b);
     const updatedBranch = updated.find((b) => b._id === id) || get().currentBranch;
     set({ branches: updated, currentBranch: updatedBranch });
+    // Bug Fix 2: refresh table list so POS immediately shows added/removed tables
+    // Small delay lets the cloud's syncBranchSectionsAndTables() finish creating/deleting
+    setTimeout(() => get().fetchTables(id), 1500);
     return updatedBranch;
   },
 
