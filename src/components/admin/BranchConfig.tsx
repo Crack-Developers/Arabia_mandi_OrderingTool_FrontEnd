@@ -120,10 +120,7 @@ export const BranchConfig: React.FC = () => {
     setManagerName('');
     setManagerId('');
     setBranchStaffList([]);
-    setBranchSections([
-      { name: 'Main Dining Hall', tablesCount: 12 },
-      { name: 'Family AC Dining', tablesCount: 8 },
-    ]);
+    setBranchSections([]);
     setNewSectionName('');
     setNewSectionTables(10);
     setIsBranchModalOpen(true);
@@ -153,9 +150,7 @@ export const BranchConfig: React.FC = () => {
     setBranchSections(
       b.sections && b.sections.length > 0
         ? b.sections
-        : [
-            { name: 'Main Dining Hall', tablesCount: 12 },
-          ]
+        : []
     );
     setIsBranchModalOpen(true);
   };
@@ -184,8 +179,15 @@ export const BranchConfig: React.FC = () => {
   };
 
   const handleRemoveSection = (index: number) => {
+    if (!window.confirm('Remove this section? All its tables will also be deleted from the cloud when you save.')) return;
     const updated = [...branchSections];
     updated.splice(index, 1);
+    setBranchSections(updated);
+  };
+
+  const handleUpdateSectionCount = (index: number, count: number) => {
+    const updated = [...branchSections];
+    updated[index] = { ...updated[index], tablesCount: Math.max(1, count) };
     setBranchSections(updated);
   };
 
@@ -1319,30 +1321,7 @@ export const BranchConfig: React.FC = () => {
                   Define the dining zones in this restaurant branch (e.g. Dining Hall, Garden Party Area, Rooftop Majlis).
                 </p>
 
-                {/* Quick Add Presets */}
-                <div className="space-y-1.5">
-                  <span className="text-[11px] font-bold text-slate-600 block">Quick Add Preset Areas:</span>
-                  <div className="flex flex-wrap gap-2">
-                    {[
-                      { name: 'Main Dining Hall', tablesCount: 14 },
-                      { name: 'AC Dining', tablesCount: 10 },
-                      { name: 'Garden Party Area', tablesCount: 10 },
-                      { name: 'Rooftop Majlis Lounge', tablesCount: 8 },
-                      { name: 'VIP Family Hall', tablesCount: 6 },
-                      { name: 'Private Banquet Hall', tablesCount: 12 },
-                    ].map((preset) => (
-                      <button
-                        key={preset.name}
-                        type="button"
-                        onClick={() => handleAddPresetSection(preset.name, preset.tablesCount)}
-                        className="px-3 py-1.5 bg-slate-100 hover:bg-red-50 hover:text-red-600 hover:border-red-200 border border-slate-200 text-slate-700 font-bold text-xs rounded-xl transition-all flex items-center gap-1 cursor-pointer"
-                      >
-                        <Plus className="w-3.5 h-3.5" />
-                        <span>{preset.name}</span>
-                      </button>
-                    ))}
-                  </div>
-                </div>
+
 
                 {/* Custom Section Input Bar */}
                 <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200 space-y-3">
@@ -1397,9 +1376,20 @@ export const BranchConfig: React.FC = () => {
                             <p className="text-xs font-extrabold text-slate-900 truncate">
                               {sec.name}
                             </p>
-                            <p className="text-[10px] text-slate-500 font-medium">
-                              {sec.tablesCount || 10} Tables
-                            </p>
+                            <div className="flex items-center gap-1.5 mt-0.5">
+                              <button
+                                type="button"
+                                onClick={() => handleUpdateSectionCount(idx, (sec.tablesCount || 10) - 1)}
+                                className="w-5 h-5 rounded bg-slate-200 hover:bg-red-100 text-slate-700 flex items-center justify-center text-xs font-extrabold cursor-pointer"
+                              >−</button>
+                              <span className="text-[11px] font-bold text-slate-700 w-6 text-center">{sec.tablesCount || 10}</span>
+                              <button
+                                type="button"
+                                onClick={() => handleUpdateSectionCount(idx, (sec.tablesCount || 10) + 1)}
+                                className="w-5 h-5 rounded bg-slate-200 hover:bg-emerald-100 text-slate-700 flex items-center justify-center text-xs font-extrabold cursor-pointer"
+                              >+</button>
+                              <span className="text-[10px] text-slate-400">tables</span>
+                            </div>
                           </div>
                         </div>
                         <button
