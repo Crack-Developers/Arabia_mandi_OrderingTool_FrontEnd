@@ -12,7 +12,6 @@ import {
   LogOut,
   Settings,
   BarChart3,
-  Printer,
   PieChart,
   Radio,
 } from 'lucide-react';
@@ -113,7 +112,6 @@ export const Navbar: React.FC = () => {
         {[
           { id: 'ADMIN_ANALYTICS', label: 'HQ Analytics', icon: BarChart3, roles: ['Super Admin'] },
           { id: 'ADMIN_DISH_SUMMARY', label: 'Summary', icon: PieChart, roles: ['Super Admin'] },
-          { id: 'PRINTER_MANAGEMENT', label: 'Printers', icon: Printer, roles: ['Super Admin'] },
           { id: 'BRANCH_SETTINGS', label: 'Settings', icon: Settings, roles: ['Super Admin'] },
         ]
           .filter((item) => item.roles.includes(activeRole || 'Super Admin'))

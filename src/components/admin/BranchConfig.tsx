@@ -249,13 +249,20 @@ export const BranchConfig: React.FC = () => {
   const handleOpenEditUserModal = (st: Staff) => {
     setEditingUserId(st._id);
     setPersonName(st.name);
-    setDesignation(st.designation || 'Front Desk Receptionist');
+    setDesignation(st.designation || (st.role === 'Waiter' ? 'Waiter' : 'Front Desk Receptionist'));
     setUserRole(st.role);
     setBranchAccess(st.branchAccess || 'All Branches');
     setUserEmail(st.email || '');
-    setUserPhone(st.phone || '+91 ');
+    setUserPhone(st.phone || (st.role === 'Waiter' ? '' : '+91 '));
     setUsername(st.username || st.email?.split('@')[0] || 'reception_user');
-    setPassword(st.password || 'Password@2026');
+    
+    // For Waiters, show their pin instead of defaulting to the system password format
+    if (st.role === 'Waiter') {
+      setPassword(st.pin || '1234');
+    } else {
+      setPassword(st.password || 'Password@2026');
+    }
+    
     setShowPassword(false);
     setIsUserModalOpen(true);
   };
@@ -292,6 +299,7 @@ export const BranchConfig: React.FC = () => {
             phone: userPhone.trim() || existing.phone,
             username: username.trim() || existing.username,
             password: password.trim() || existing.password,
+            pin: userRole === 'Waiter' ? password.trim() : existing.pin,
           };
           await updateUser(editingUserId, updatedStaff);
           setSharingStaff(updatedStaff);
@@ -309,6 +317,7 @@ export const BranchConfig: React.FC = () => {
           active: true,
           username: username.trim() || `reception.${Math.floor(100 + Math.random() * 900)}`,
           password: password.trim() || 'Mandi@POS123',
+          pin: userRole === 'Waiter' ? password.trim() || '1234' : undefined,
         };
         await addUser(createdStaff);
         const createdWithId: any = {
@@ -329,7 +338,10 @@ export const BranchConfig: React.FC = () => {
   };
 
   const handleCopyCredentialsText = (st: Staff) => {
-    const textToCopy = `=== ARABIAN MANDI POS LOGIN CREDENTIALS ===\nEmployee Name: ${st.name}\nDesignation: ${st.designation || st.role}\nAssigned Branch: ${st.branchAccess || 'All Branches'}\nLogin Username: ${st.username || st.email}\nPassword: ${st.password || 'Please check with Admin'}\nLogin Role: ${st.role}`;
+    const credText = st.role === 'Waiter' 
+      ? `Login PIN: ${st.pin || '1234'}` 
+      : `Password: ${st.password || 'Please check with Admin'}`;
+    const textToCopy = `=== ARABIAN MANDI POS LOGIN CREDENTIALS ===\nEmployee Name: ${st.name}\nDesignation: ${st.designation || st.role}\nAssigned Branch: ${st.branchAccess || 'All Branches'}\nLogin Username: ${st.username || st.email}\n${credText}\nLogin Role: ${st.role}`;
     navigator.clipboard.writeText(textToCopy);
     setCopiedCredential(true);
     setTimeout(() => setCopiedCredential(false), 3000);

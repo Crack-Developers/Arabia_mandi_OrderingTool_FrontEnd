@@ -6,7 +6,6 @@ import {
   DatabaseBackup,
   ShieldAlert,
   PieChart,
-  Printer,
 } from 'lucide-react';
 
 export const Sidebar: React.FC = () => {
@@ -26,12 +25,7 @@ export const Sidebar: React.FC = () => {
       icon: PieChart,
       roles: ['Super Admin'],
     },
-    {
-      id: 'PRINTER_MANAGEMENT',
-      label: 'Printers',
-      icon: Printer,
-      roles: ['Super Admin'],
-    },
+
     {
       id: 'BRANCH_SETTINGS',
       label: 'Branch Config',
