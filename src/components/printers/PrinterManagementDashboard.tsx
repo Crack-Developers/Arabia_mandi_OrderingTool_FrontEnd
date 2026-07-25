@@ -87,7 +87,7 @@ export const PrinterManagementDashboard: React.FC = () => {
         duty: chosenDuty,
         role: chosenRole,
         sections: [chosenSection],
-        connection: discovered.ip.startsWith('/dev/') ? 'USB/LAN' : 'LAN',
+        connection: (discovered.ip.startsWith('/dev/') || discovered.ip.startsWith('cups:') || discovered.ip.startsWith('win:') || discovered.ip.startsWith('os:')) ? 'USB/LAN' : 'LAN',
         status: 'online',
         isActive: true,
         branchId: currentBranch._id,
@@ -158,6 +158,22 @@ export const PrinterManagementDashboard: React.FC = () => {
   const onlinePrinters  = printers.filter(p => (p as any).status === 'online');
   const offlinePrinters = printers.filter(p => (p as any).status !== 'online');
 
+  // ── UI-layer dedup: ensure a printer is never rendered twice ──────────────
+  // Discovered: dedup by IP and exclude anything already saved
+  const savedIPSet = new Set(printers.map(p => (p.ip || '').toLowerCase().trim()));
+  const seenDiscoveredIPs = new Set<string>();
+  const uniqueDiscovered = (discoveredPrinters || []).filter((p: any) => {
+    const key = (p.ip || '').toLowerCase().trim();
+    if (savedIPSet.has(key)) return false;         // already saved — don't show as "New"
+    if (seenDiscoveredIPs.has(key)) return false;  // duplicate in list
+    seenDiscoveredIPs.add(key);
+    return true;
+  });
+  // Saved: dedup by _id
+  const seenSavedIds = new Set<string>();
+  const uniqueOnline  = onlinePrinters.filter(p => { const id = String(p._id); if (seenSavedIds.has(id)) return false; seenSavedIds.add(id); return true; });
+  const uniqueOffline = offlinePrinters.filter(p => { const id = String(p._id); if (seenSavedIds.has(id)) return false; seenSavedIds.add(id); return true; });
+
   return (
     <div className="flex-1 bg-slate-50 flex flex-col p-6 overflow-hidden">
       <div className="max-w-5xl w-full mx-auto flex flex-col h-full bg-white rounded-3xl shadow-sm border border-slate-200 overflow-hidden">
@@ -213,7 +229,7 @@ export const PrinterManagementDashboard: React.FC = () => {
             <section>
               <h2 className="text-sm font-black uppercase tracking-widest text-slate-500 mb-4 flex items-center gap-2">
                 <span className="inline-block w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-                Available USB Devices ({discoveredPrinters.length})
+                Available USB Devices ({uniqueDiscovered.length})
               </h2>
 
               {isScanning ? (
@@ -221,7 +237,7 @@ export const PrinterManagementDashboard: React.FC = () => {
                   <Loader2 className="w-7 h-7 animate-spin text-amber-500 mx-auto mb-2" />
                   <p className="text-sm font-semibold text-slate-500">Scanning USB ports…</p>
                 </div>
-              ) : discoveredPrinters.length === 0 ? (
+              ) : uniqueDiscovered.length === 0 ? (
                 <div className="p-10 text-center bg-slate-50 rounded-2xl border-2 border-dashed border-slate-200">
                   <Cable className="w-9 h-9 text-slate-300 mx-auto mb-2" />
                   <p className="text-sm font-semibold text-slate-500">No new USB printers found.</p>
@@ -229,8 +245,8 @@ export const PrinterManagementDashboard: React.FC = () => {
                 </div>
               ) : (
                 <div className="grid grid-cols-1 gap-4">
-                  {discoveredPrinters.map(discovered => {
-                    const isUSB = (discovered.ip || '').startsWith('/dev/') || (discovered.ip || '').startsWith('cups:');
+                  {uniqueDiscovered.map(discovered => {
+                    const isUSB = (discovered.ip || '').startsWith('/dev/') || (discovered.ip || '').startsWith('cups:') || (discovered.ip || '').startsWith('win:') || (discovered.ip || '').startsWith('os:');
                     const currentDuty    = dutySelection[discovered._id]    || 'KOT';
                     const currentSection = sectionSelection[discovered._id] || 'ALL';
                     return (
@@ -403,15 +419,15 @@ export const PrinterManagementDashboard: React.FC = () => {
           )}
 
           {/* ══════════════════ SAVED DEVICES (always visible) ══════════════════ */}
-          {printers.length > 0 && (
+          {(uniqueOnline.length > 0 || uniqueOffline.length > 0) && (
             <section>
               <h2 className="text-sm font-black uppercase tracking-widest text-slate-500 mb-3 flex items-center gap-2">
                 <Bookmark className="w-4 h-4 text-amber-500" />
-                Saved Devices ({printers.length})
+                Saved Devices ({uniqueOnline.length + uniqueOffline.length})
               </h2>
               <div className="grid grid-cols-1 gap-3">
-                {onlinePrinters.map(p  => <SavedPrinterCard key={p._id} p={p} isOnline sections={sections} testingId={testingId} testResult={testResult} onTest={() => handleTestPrint(p)} onRoute={() => openPrinterRouting(p._id)} onDelete={() => deletePrinter(p._id)} />)}
-                {offlinePrinters.map(p => <SavedPrinterCard key={p._id} p={p} isOnline={false} sections={sections} testingId={testingId} testResult={testResult} onTest={() => handleTestPrint(p)} onRoute={() => openPrinterRouting(p._id)} onDelete={() => deletePrinter(p._id)} />)}
+                {uniqueOnline.map(p  => <SavedPrinterCard key={p._id} p={p} isOnline sections={sections} testingId={testingId} testResult={testResult} onTest={() => handleTestPrint(p)} onRoute={() => openPrinterRouting(p._id)} onDelete={() => deletePrinter(p._id)} />)}
+                {uniqueOffline.map(p => <SavedPrinterCard key={p._id} p={p} isOnline={false} sections={sections} testingId={testingId} testResult={testResult} onTest={() => handleTestPrint(p)} onRoute={() => openPrinterRouting(p._id)} onDelete={() => deletePrinter(p._id)} />)}
               </div>
             </section>
           )}

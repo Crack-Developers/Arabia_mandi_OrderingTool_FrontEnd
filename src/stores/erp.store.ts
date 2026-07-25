@@ -469,12 +469,30 @@ export const useERPStore = create<ERPState>()(
     try {
       const currentBranchId = get().currentBranch?._id || (get().currentUser?.branchId as string | undefined);
       const data = await printerApi.scanLAN(currentBranchId);
-      const foundPrinters = data?.foundPrinters ?? (Array.isArray(data) ? data : []);
-      const allSaved      = data?.savedPrinters ?? [];
-      // Filter saved printers strictly to current branch only — prevents cross-branch leakage
-      const savedPrinters = currentBranchId
+      const rawFound   = data?.foundPrinters ?? (Array.isArray(data) ? data : []);
+      const allSaved   = data?.savedPrinters ?? [];
+
+      // ── Dedup foundPrinters by IP (safety net) ──
+      const seenIPs = new Set<string>();
+      const foundPrinters = rawFound.filter((p: any) => {
+        const key = (p.ip || '').toLowerCase().trim();
+        if (seenIPs.has(key)) return false;
+        seenIPs.add(key);
+        return true;
+      });
+
+      // ── Filter saved printers to current branch only, then dedup by _id ──
+      const branchFiltered = currentBranchId
         ? allSaved.filter((p: any) => p.branchId && String(p.branchId) === String(currentBranchId))
         : allSaved;
+      const seenIds = new Set<string>();
+      const savedPrinters = branchFiltered.filter((p: any) => {
+        const id = String(p._id || '');
+        if (seenIds.has(id)) return false;
+        seenIds.add(id);
+        return true;
+      });
+
       set({
         discoveredPrinters: foundPrinters,
         printers: savedPrinters.length > 0 ? savedPrinters : get().printers,
