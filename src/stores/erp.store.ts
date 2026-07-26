@@ -383,7 +383,7 @@ export const useERPStore = create<ERPState>()(
     // Reload ALL branch-scoped data for the new branch
     get().fetchTables(branchId);
     get().fetchPrinters(branchId);
-    get().fetchMenuData();
+    get().fetchMenuData(branchId);
   },
 
   setSelectedTable: (tableId) => set({ selectedTableId: tableId }),
@@ -432,7 +432,9 @@ export const useERPStore = create<ERPState>()(
 
   fetchMenuData: async (branchId?: string) => {
     try {
-      const resolvedBranchId = branchId || get().currentUser?.branchIds?.[0];
+      let resolvedBranchId = branchId || get().currentBranch?._id || get().currentUser?.branchIds?.[0];
+      if (resolvedBranchId === 'ALL') resolvedBranchId = undefined;
+      
       const [catData, itemData] = await Promise.all([
         menuApi.getAllCategories(resolvedBranchId),
         menuApi.getAllItems(resolvedBranchId),
