@@ -17,10 +17,12 @@ export const MenuManager: React.FC = () => {
     currentBranch,
   } = useERPStore();
 
+  const currentBranchId = currentBranch?._id;
+
   useEffect(() => {
-    fetchPrinters();
-    fetchMenuData();
-  }, [fetchPrinters, fetchMenuData]);
+    fetchPrinters(currentBranchId);
+    fetchMenuData(currentBranchId);
+  }, [fetchPrinters, fetchMenuData, currentBranchId]);
 
   const activeCategories = categories || [];
 

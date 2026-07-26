@@ -19,6 +19,7 @@ export function PrinterMenuRoutingPage() {
     fetchMenuData,
     updateMenuItem,
     closePrinterRouting,
+    currentBranch,
   } = useERPStore();
 
   const [searchQuery, setSearchQuery] = useState('');
@@ -31,10 +32,12 @@ export function PrinterMenuRoutingPage() {
     [printers, printerMappingPrinterId]
   );
 
+  const currentBranchId = currentBranch?._id;
+
   useEffect(() => {
-    fetchPrinters();
-    fetchMenuData();
-  }, [fetchPrinters, fetchMenuData]);
+    fetchPrinters(currentBranchId);
+    fetchMenuData(currentBranchId);
+  }, [fetchPrinters, fetchMenuData, currentBranchId]);
 
   useEffect(() => {
     if (!selectedPrinter) return;
