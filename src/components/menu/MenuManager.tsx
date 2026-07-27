@@ -14,15 +14,15 @@ export const MenuManager: React.FC = () => {
     toggleMenuItemAvailability,
     addMenuItem,
     addCategory,
-    currentBranch,
+    branchFilterId,
   } = useERPStore();
 
-  const currentBranchId = currentBranch?._id;
+  const resolvedBranchId = branchFilterId === 'ALL' ? undefined : branchFilterId;
 
   useEffect(() => {
-    fetchPrinters(currentBranchId);
-    fetchMenuData(currentBranchId);
-  }, [fetchPrinters, fetchMenuData, currentBranchId]);
+    fetchPrinters(resolvedBranchId);
+    fetchMenuData(resolvedBranchId);
+  }, [fetchPrinters, fetchMenuData, resolvedBranchId]);
 
   const activeCategories = categories || [];
 
