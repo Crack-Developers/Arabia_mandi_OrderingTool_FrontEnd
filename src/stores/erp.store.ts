@@ -370,7 +370,7 @@ export const useERPStore = create<ERPState>()(
         // Reload ALL branch-scoped data for the newly selected branch
         get().fetchTables(branchId);
         get().fetchPrinters(branchId);
-        get().fetchMenuData();
+        get().fetchMenuData(branchId);
         return;
       }
     }
