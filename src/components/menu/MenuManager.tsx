@@ -15,6 +15,7 @@ export const MenuManager: React.FC = () => {
     addMenuItem,
     addCategory,
     branchFilterId,
+    currentBranch,
   } = useERPStore();
 
   const resolvedBranchId = branchFilterId === 'ALL' ? undefined : branchFilterId;

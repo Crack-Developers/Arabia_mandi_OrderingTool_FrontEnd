@@ -64,7 +64,7 @@ function currentMonthISO() {
 }
 
 export const DishSummaryPage: React.FC = () => {
-  const { branchFilterId, categories, branches } = useERPStore();
+  const { branchFilterId, setBranchFilterId, categories, branches, currentBranch } = useERPStore();
 
   // Filter States
   const [filterType, setFilterType] = useState<'day' | 'week' | 'month' | 'year'>('day');
@@ -90,8 +90,6 @@ export const DishSummaryPage: React.FC = () => {
   const [sortField, setSortField] = useState<'qtySold' | 'revenue' | 'name' | 'percentageQty'>('qtySold');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
 
-  const branchId = branchFilterId === 'ALL' ? undefined : branchFilterId;
-
   const loadData = useCallback(async () => {
     setLoading(true);
     setError(null);
@@ -102,7 +100,7 @@ export const DishSummaryPage: React.FC = () => {
         filterType === 'month' ? selectedMonth : undefined,
         filterType === 'year' ? selectedYear : undefined,
         selectedCategory,
-        branchId
+        branchFilterId
       );
 
       if (res) {
@@ -123,16 +121,25 @@ export const DishSummaryPage: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  }, [filterType, selectedDate, selectedMonth, selectedYear, selectedCategory, branchId]);
+  }, [filterType, selectedDate, selectedMonth, selectedYear, selectedCategory, branchFilterId]);
 
   useEffect(() => {
     loadData();
   }, [loadData]);
 
-  // Auto-refresh every 60s
+  // Auto-refresh every 10s
   useEffect(() => {
-    const t = setInterval(loadData, 60_000);
-    return () => clearInterval(t);
+    const t = setInterval(() => {
+      if (!useERPStore.getState().isOfflineMode && navigator.onLine) {
+        loadData();
+      }
+    }, 10_000);
+    const handleOnline = () => loadData();
+    window.addEventListener('online', handleOnline);
+    return () => {
+      clearInterval(t);
+      window.removeEventListener('online', handleOnline);
+    };
   }, [loadData]);
 
   // Filtered & Sorted items
@@ -219,7 +226,12 @@ export const DishSummaryPage: React.FC = () => {
     document.body.removeChild(link);
   };
 
-  const branchName = branches.find((b) => b._id === branchFilterId)?.name || 'All Branches';
+  let branchName = 'All Branches';
+  if (branchFilterId === 'ALL') {
+    branchName = 'All Branches';
+  } else {
+    branchName = branches.find((b) => b._id === branchFilterId)?.name || currentBranch?.name || 'Selected Branch';
+  }
 
   return (
     <div className="flex-1 overflow-y-auto bg-slate-50 min-h-[calc(100vh-4rem)] text-slate-800 font-sans pb-12">
@@ -249,6 +261,25 @@ export const DishSummaryPage: React.FC = () => {
 
           {/* Time Filter Tabs & Action Controls */}
           <div className="flex flex-wrap items-center gap-3">
+            {/* Branch Selector Dropdown */}
+            <div className="flex items-center gap-1.5 bg-slate-100 px-3 py-1.5 rounded-xl border border-slate-200 text-xs font-bold">
+              <span className="text-slate-500">Branch:</span>
+              <select
+                value={branchFilterId}
+                onChange={(e) => setBranchFilterId(e.target.value)}
+                className="bg-transparent font-extrabold text-slate-800 focus:outline-none cursor-pointer"
+              >
+                <option value="ALL">All Branches</option>
+                {branches.map((b) => (
+                  <option key={b._id} value={b._id}>
+                    {b.name}
+                  </option>
+                ))}
+                {currentBranch && !branches.some((b) => b._id === currentBranch._id) && (
+                  <option value={currentBranch._id}>{currentBranch.name}</option>
+                )}
+              </select>
+            </div>
             {/* Filter Type Pills: Day / Week / Month / Year */}
             <div className="flex bg-slate-100 p-1 rounded-xl border border-slate-200 text-xs font-bold">
               {[

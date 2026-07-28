@@ -109,7 +109,7 @@ export const AdminDashboard: React.FC = () => {
   const [leakageLogs, setLeakageLogs] = useState<any[]>([]);
   const [loadingLeakage, setLoadingLeakage] = useState(false);
 
-  const branchId = branchFilterId === 'ALL' ? undefined : branchFilterId;
+  const branchId = branchFilterId;
 
   const load = useCallback(async (silent = false) => {
     if (useERPStore.getState().isOfflineMode || !navigator.onLine) {

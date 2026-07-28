@@ -209,7 +209,7 @@ export const dashboardApi = {
     if (date)       params.set('date', date);
     if (month)      params.set('month', month);
     if (year)       params.set('year', year);
-    if (branchId && branchId !== 'ALL') params.set('branchId', branchId);
+    if (branchId)   params.set('branchId', branchId);
     const qs = params.toString();
     return get<any>(`/dashboard/stats${qs ? `?${qs}` : ''}`);
   },
@@ -219,7 +219,7 @@ export const dashboardApi = {
     if (date)       params.set('date', date);
     if (month)      params.set('month', month);
     if (year)       params.set('year', year);
-    if (branchId && branchId !== 'ALL') params.set('branchId', branchId);
+    if (branchId)   params.set('branchId', branchId);
     return get<any>(`/dashboard/leakage-logs?${params.toString()}`);
   },
   getDishSummary: (filterType: string, date?: string, month?: string, year?: string, category?: string, branchId?: string) => {
@@ -229,7 +229,7 @@ export const dashboardApi = {
     if (month)      params.set('month', month);
     if (year)       params.set('year', year);
     if (category && category !== 'ALL') params.set('category', category);
-    if (branchId && branchId !== 'ALL') params.set('branchId', branchId);
+    if (branchId)   params.set('branchId', branchId);
     return get<any>(`/dashboard/dish-summary?${params.toString()}`);
   },
 };
