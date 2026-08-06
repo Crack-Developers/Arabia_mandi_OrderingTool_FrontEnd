@@ -206,15 +206,17 @@ function runMigrations() {
 
     -- Bills
     CREATE TABLE IF NOT EXISTS bills (
-      _id        TEXT PRIMARY KEY,
-      order_id   TEXT NOT NULL,
-      branch_id  TEXT,
-      subtotal   REAL DEFAULT 0,
-      tax        REAL DEFAULT 0,
-      discount   REAL DEFAULT 0,
-      total      REAL DEFAULT 0,
-      status     TEXT DEFAULT 'unpaid',
-      created_at TEXT DEFAULT (datetime('now'))
+      _id           TEXT PRIMARY KEY,
+      order_id      TEXT NOT NULL,
+      branch_id     TEXT,
+      subtotal      REAL DEFAULT 0,
+      tax           REAL DEFAULT 0,
+      discount      REAL DEFAULT 0,
+      total         REAL DEFAULT 0,
+      status        TEXT DEFAULT 'unpaid',
+      bill_sequence INTEGER DEFAULT 1,
+      created_at    TEXT DEFAULT (datetime('now')),
+      updated_at    TEXT DEFAULT (datetime('now'))
     );
 
     -- Payments
@@ -308,6 +310,10 @@ function runMigrations() {
   safeAlter("ALTER TABLE order_items ADD COLUMN quantity INTEGER DEFAULT 1");
   safeAlter("ALTER TABLE order_items ADD COLUMN kot_sequence INTEGER DEFAULT 1");
   safeAlter("ALTER TABLE order_items ADD COLUMN created_at TEXT DEFAULT (datetime('now'))");
+  safeAlter("ALTER TABLE order_items ADD COLUMN tax_rate REAL DEFAULT 5");
+  // bills migration — add bill_sequence for sequential daily bill numbers
+  safeAlter("ALTER TABLE bills ADD COLUMN bill_sequence INTEGER DEFAULT 1");
+  safeAlter("ALTER TABLE bills ADD COLUMN updated_at TEXT DEFAULT (datetime('now'))");
 
   // Always seed default offline accounts using INSERT OR IGNORE so local POS login works offline right away
   try {
