@@ -107,7 +107,7 @@ router.post('/items', (req, res) => {
       ? Number(body.price)
       : (Array.isArray(body.variants) && body.variants[0]?.price != null ? Number(body.variants[0].price) : 0);
     const core       = body.core !== undefined && body.core !== null && body.core !== '' ? Number(body.core) : null;
-    const taxRate    = body.taxRate !== undefined && body.taxRate !== null ? Number(body.taxRate) : (body.tax_rate !== undefined && body.tax_rate !== null ? Number(body.tax_rate) : 5);
+    const taxRate    = (body.taxRate !== undefined && body.taxRate !== null) ? Number(body.taxRate) : ((body.tax_rate !== undefined && body.tax_rate !== null) ? Number(body.tax_rate) : 0);
     const description= body.description || '';
     const variants   = body.variants && Array.isArray(body.variants) ? JSON.stringify(body.variants) : JSON.stringify([{ name: 'Regular', price }]);
     const addons     = body.addons && Array.isArray(body.addons) ? JSON.stringify(body.addons) : JSON.stringify([]);
@@ -156,7 +156,7 @@ router.put('/items/:id', (req, res) => {
     const categoryId = (body.categoryId || body.category_id) !== undefined && (body.categoryId || body.category_id) !== null ? (body.categoryId || body.category_id) : existing.category_id;
     const available  = body.available !== undefined && body.available !== null ? (body.available ? 1 : 0) : existing.available;
     const core       = body.core !== undefined ? (body.core !== null && body.core !== '' ? Number(body.core) : null) : existing.core;
-    const taxRate    = body.taxRate !== undefined && body.taxRate !== null ? Number(body.taxRate) : (body.tax_rate !== undefined && body.tax_rate !== null ? Number(body.tax_rate) : (existing.tax_rate !== null ? Number(existing.tax_rate) : 5));
+    const taxRate    = (body.taxRate !== undefined && body.taxRate !== null) ? Number(body.taxRate) : ((body.tax_rate !== undefined && body.tax_rate !== null) ? Number(body.tax_rate) : (existing.tax_rate !== null && existing.tax_rate !== undefined ? Number(existing.tax_rate) : 0));
     const description= body.description !== undefined && body.description !== null ? body.description : (existing.description || '');
     const variants   = body.variants && Array.isArray(body.variants) ? JSON.stringify(body.variants) : existing.variants;
     const addons     = body.addons && Array.isArray(body.addons) ? JSON.stringify(body.addons) : existing.addons;
@@ -249,7 +249,7 @@ function formatItem(i) {
   } catch (e) {}
 
   const coreVal = i.core !== null && i.core !== undefined && i.core !== '' ? Number(i.core) : undefined;
-  const taxRateVal = i.tax_rate !== null && i.tax_rate !== undefined ? Number(i.tax_rate) : 5;
+  const taxRateVal = (i.tax_rate !== null && i.tax_rate !== undefined) ? Number(i.tax_rate) : 0;
 
   return {
     _id:         i._id,

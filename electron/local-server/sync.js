@@ -96,7 +96,7 @@ async function pullFromCloud(db, token) {
             const catId = it.categoryId || it.category_id || '';
             const avail = (it.isAvailable === false || it.available === false || it.available === 0) ? 0 : 1;
             const coreVal = it.core !== null && it.core !== undefined && it.core !== '' ? Number(it.core) : null;
-            const taxRateVal = it.taxRate !== null && it.taxRate !== undefined ? Number(it.taxRate) : (it.tax_rate !== null && it.tax_rate !== undefined ? Number(it.tax_rate) : 5);
+            const taxRateVal = (it.taxRate !== null && it.taxRate !== undefined) ? Number(it.taxRate) : ((it.tax_rate !== null && it.tax_rate !== undefined) ? Number(it.tax_rate) : 0);
             const descVal = it.description || '';
             const variantsVal = it.variants ? (typeof it.variants === 'string' ? it.variants : JSON.stringify(it.variants)) : JSON.stringify([{ name: 'Regular', price: Number(it.price) || 0 }]);
             const addonsVal = it.addons ? (typeof it.addons === 'string' ? it.addons : JSON.stringify(it.addons)) : JSON.stringify([]);
