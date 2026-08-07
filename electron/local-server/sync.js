@@ -5,24 +5,26 @@
  */
 
 const CLOUD_API  = 'https://arabia-mandi-orderingtool-backend.onrender.com/api/v1';
-const SYNC_INTERVAL_MS = 30_000;
+const PUSH_INTERVAL_MS = 10_000;   // 10s: Near real-time push for sales, orders, bills, and payments
+const PULL_INTERVAL_MS = 180_000;  // 3m: Infrequent catalog pull (dishes, categories, tables, sections, printers, staff)
 
-let timer       = null;
-let isSyncing   = false;
-let lastSyncAt  = null;
+let timer        = null;
+let isSyncing    = false;
+let lastSyncAt   = null;
+let lastPullAt   = null;
 let pendingCount = 0;
 let hasCloudToken = false;
 
 function getSyncStatus() {
-  return { isSyncing, lastSyncAt, pendingCount, hasCloudToken };
+  return { isSyncing, lastSyncAt, lastPullAt, pendingCount, hasCloudToken };
 }
 
 function startSyncService() {
   if (timer) return;
-  console.log('[Sync] Service started — interval:', SYNC_INTERVAL_MS / 1000, 's');
-  // Run immediately, then on interval
-  runSync();
-  timer = setInterval(runSync, SYNC_INTERVAL_MS);
+  console.log('[Sync] Service started — push interval:', PUSH_INTERVAL_MS / 1000, 's, pull interval:', PULL_INTERVAL_MS / 1000, 's');
+  // Run immediately with forcePull=true on start, then on push interval
+  runSync({ forcePull: true });
+  timer = setInterval(runSync, PUSH_INTERVAL_MS);
 }
 
 function stopSyncService() {
@@ -42,14 +44,17 @@ async function pullFromCloud(db, token) {
         const bData = await bRes.json();
         const branches = Array.isArray(bData) ? bData : (bData?.data || bData?.branches || []);
         if (branches.length > 0) {
-          const stmt = db.prepare(`
-            INSERT OR REPLACE INTO branches (_id, name, branchCode, address, phone, isActive, created_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))
-          `);
-          for (const b of branches) {
-            if (!b || !b._id) continue;
-            stmt.run(String(b._id), b.name || 'Branch', b.branchCode || '', b.address || '', b.phone || '', b.isActive === false || b.isActive === 0 ? 0 : 1);
-          }
+          const syncBranchesTx = db.transaction((branchList) => {
+            const stmt = db.prepare(`
+              INSERT OR REPLACE INTO branches (_id, name, branchCode, address, phone, isActive, created_at, updated_at)
+              VALUES (?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))
+            `);
+            for (const b of branchList) {
+              if (!b || !b._id) continue;
+              stmt.run(String(b._id), b.name || 'Branch', b.branchCode || '', b.address || '', b.phone || '', b.isActive === false || b.isActive === 0 ? 0 : 1);
+            }
+          });
+          syncBranchesTx(branches);
         }
       }
     } catch (e) { console.warn('[Sync] Branches pull error:', e.message); }
@@ -60,145 +65,165 @@ async function pullFromCloud(db, token) {
       const bid = br._id;
       if (!bid) continue;
 
-      // Pull Categories
+      // Parallelize all 5 entity pull requests concurrently via Promise.all
+      const [cRes, mRes, sRes, tRes, pRes] = await Promise.all([
+        fetch(`${CLOUD_API}/menu/categories?branchId=${bid}`, { timeout: 10000, headers }).catch(e => { console.warn('[Sync] Categories pull network error:', e.message); return null; }),
+        fetch(`${CLOUD_API}/menu/items?branchId=${bid}`, { timeout: 10000, headers }).catch(e => { console.warn('[Sync] Menu items pull network error:', e.message); return null; }),
+        fetch(`${CLOUD_API}/sections?branchId=${bid}`, { timeout: 10000, headers }).catch(e => { console.warn('[Sync] Sections pull network error:', e.message); return null; }),
+        fetch(`${CLOUD_API}/tables?branchId=${bid}`, { timeout: 10000, headers }).catch(e => { console.warn('[Sync] Tables pull network error:', e.message); return null; }),
+        fetch(`${CLOUD_API}/printers?branchId=${bid}`, { timeout: 10000, headers }).catch(e => { console.warn('[Sync] Printers pull network error:', e.message); return null; }),
+      ]);
+
+      // 1. Process Categories
       try {
-        const cRes = await fetch(`${CLOUD_API}/menu/categories?branchId=${bid}`, { timeout: 4000, headers });
-        if (cRes.ok) {
-          const cData = await cRes.json();
+        if (cRes && cRes.ok) {
+          const cData = await cRes.json().catch(() => null);
           const cats = Array.isArray(cData) ? cData : (cData?.data || cData?.categories || []);
-          const cStmt = db.prepare(`INSERT OR REPLACE INTO categories (_id, branch_id, name, sort_order, updated_at) VALUES (?, ?, ?, ?, datetime('now'))`);
-          const cloudIds = new Set();
-          for (const c of cats) {
-            if (!c?._id) continue;
-            cloudIds.add(String(c._id));
-            cStmt.run(String(c._id), String(bid), c.name || 'Category', c.sortOrder || c.sort_order || 0);
-          }
-          const pending = db.prepare("SELECT COUNT(*) as c FROM sync_log WHERE table_name='categories' AND synced=0").get().c;
-          if (pending === 0 && cloudIds.size > 0) {
-            const locs = db.prepare("SELECT _id FROM categories WHERE branch_id=?").all(String(bid)) || [];
-            const delStmt = db.prepare("DELETE FROM categories WHERE _id=?");
-            for (const l of locs) if (!cloudIds.has(l._id)) delStmt.run(l._id);
-          }
-        }
-      } catch (e) { console.warn('[Sync] Categories pull error:', e.message); }
-
-      // Pull Menu Items
-      try {
-        const mRes = await fetch(`${CLOUD_API}/menu/items?branchId=${bid}`, { timeout: 4000, headers });
-        if (mRes.ok) {
-          const mData = await mRes.json();
-          const items = Array.isArray(mData) ? mData : (mData?.data || mData?.menuItems || []);
-          const mStmt = db.prepare(`INSERT OR REPLACE INTO menu_items (_id, branch_id, category_id, name, price, available, core, tax_rate, description, variants, addons, sections, badge, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))`);
-          const cloudIds = new Set();
-          for (const it of items) {
-            if (!it?._id) continue;
-            cloudIds.add(String(it._id));
-            const catId = it.categoryId || it.category_id || '';
-            const avail = (it.isAvailable === false || it.available === false || it.available === 0) ? 0 : 1;
-            const coreVal = it.core !== null && it.core !== undefined && it.core !== '' ? Number(it.core) : null;
-            const taxRateVal = (it.taxRate !== null && it.taxRate !== undefined) ? Number(it.taxRate) : ((it.tax_rate !== null && it.tax_rate !== undefined) ? Number(it.tax_rate) : 0);
-            const descVal = it.description || '';
-            const variantsVal = it.variants ? (typeof it.variants === 'string' ? it.variants : JSON.stringify(it.variants)) : JSON.stringify([{ name: 'Regular', price: Number(it.price) || 0 }]);
-            const addonsVal = it.addons ? (typeof it.addons === 'string' ? it.addons : JSON.stringify(it.addons)) : JSON.stringify([]);
-            const sectionsVal = it.sections ? (typeof it.sections === 'string' ? it.sections : JSON.stringify(it.sections)) : JSON.stringify(['ALL']);
-            const badgeVal = it.badge || null;
-            mStmt.run(String(it._id), String(bid), String(catId), it.name || 'Dish', Number(it.price) || 0, avail, coreVal, taxRateVal, descVal, variantsVal, addonsVal, sectionsVal, badgeVal);
-          }
-          const pending = db.prepare("SELECT COUNT(*) as c FROM sync_log WHERE table_name='menu_items' AND synced=0").get().c;
-          if (pending === 0 && cloudIds.size > 0) {
-            const locs = db.prepare("SELECT _id FROM menu_items WHERE branch_id=?").all(String(bid)) || [];
-            const delStmt = db.prepare("DELETE FROM menu_items WHERE _id=?");
-            for (const l of locs) if (!cloudIds.has(l._id)) delStmt.run(l._id);
-          }
-        }
-      } catch (e) { console.warn('[Sync] Menu items pull error:', e.message); }
-
-      // Pull Sections
-      try {
-        const sRes = await fetch(`${CLOUD_API}/sections?branchId=${bid}`, { timeout: 4000, headers });
-        if (sRes.ok) {
-          const sData = await sRes.json();
-          const sections = Array.isArray(sData) ? sData : (sData?.data || sData?.sections || []);
-          const sStmt = db.prepare(`INSERT OR REPLACE INTO sections (_id, branch_id, name, updated_at) VALUES (?, ?, ?, datetime('now'))`);
-          const cloudIds = new Set();
-          for (const sec of sections) {
-            if (!sec?._id) continue;
-            cloudIds.add(String(sec._id));
-            sStmt.run(String(sec._id), String(bid), sec.name || 'Section');
-          }
-          const pending = db.prepare("SELECT COUNT(*) as c FROM sync_log WHERE table_name='sections' AND synced=0").get().c;
-          if (pending === 0 && cloudIds.size > 0) {
-            const locs = db.prepare("SELECT _id FROM sections WHERE branch_id=?").all(String(bid)) || [];
-            const delStmt = db.prepare("DELETE FROM sections WHERE _id=?");
-            for (const l of locs) if (!cloudIds.has(l._id)) delStmt.run(l._id);
-          }
-        }
-      } catch (e) { console.warn('[Sync] Sections pull error:', e.message); }
-
-      // Pull Tables (Safely preserving active local dine-in order state!)
-      try {
-        const tRes = await fetch(`${CLOUD_API}/tables?branchId=${bid}`, { timeout: 4000, headers });
-        if (tRes.ok) {
-          const tData = await tRes.json();
-          const tables = Array.isArray(tData) ? tData : (tData?.data || tData?.tables || []);
-          const checkStmt  = db.prepare('SELECT current_order_id, status FROM tables WHERE _id = ?');
-          const updateStmt = db.prepare(`UPDATE tables SET branch_id=?, section_id=?, sectionName=?, tableNumber=?, capacity=?, status=COALESCE(?, status), updated_at=datetime('now') WHERE _id=?`);
-          const insertStmt = db.prepare(`INSERT INTO tables (_id, branch_id, section_id, sectionName, tableNumber, capacity, status, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'))`);
-          const cloudIds = new Set();
-          for (const tb of tables) {
-            if (!tb?._id) continue;
-            cloudIds.add(String(tb._id));
-            const secId   = tb.sectionId || tb.section_id || '';
-            const secName = tb.sectionName || tb.section_name || 'Main Dining';
-            const cap     = Number(tb.capacity) || 4;
-            const existing = checkStmt.get(String(tb._id));
-            if (existing) {
-              const keepStatus = existing.current_order_id ? existing.status : (tb.status || 'Available');
-              updateStmt.run(String(bid), String(secId), secName, tb.tableNumber || 'TBL', cap, keepStatus, String(tb._id));
-            } else {
-              insertStmt.run(String(tb._id), String(bid), String(secId), secName, tb.tableNumber || 'TBL', cap, tb.status || 'Available');
+          const syncCategoriesTx = db.transaction((categoriesList) => {
+            const cStmt = db.prepare(`INSERT OR REPLACE INTO categories (_id, branch_id, name, sort_order, updated_at) VALUES (?, ?, ?, ?, datetime('now'))`);
+            const cloudIds = new Set();
+            for (const c of categoriesList) {
+              if (!c?._id) continue;
+              cloudIds.add(String(c._id));
+              cStmt.run(String(c._id), String(bid), c.name || 'Category', c.sortOrder || c.sort_order || 0);
             }
-          }
-          const pending = db.prepare("SELECT COUNT(*) as c FROM sync_log WHERE table_name='tables' AND synced=0").get().c;
-          if (pending === 0 && cloudIds.size > 0) {
-            const locs = db.prepare("SELECT _id, current_order_id FROM tables WHERE branch_id=?").all(String(bid)) || [];
-            const delStmt = db.prepare("DELETE FROM tables WHERE _id=?");
-            for (const l of locs) if (!cloudIds.has(l._id) && !l.current_order_id) delStmt.run(l._id);
-          }
+            const pending = db.prepare("SELECT COUNT(*) as c FROM sync_log WHERE table_name='categories' AND synced=0").get().c;
+            if (pending === 0 && cloudIds.size > 0) {
+              const locs = db.prepare("SELECT _id FROM categories WHERE branch_id=?").all(String(bid)) || [];
+              const delStmt = db.prepare("DELETE FROM categories WHERE _id=?");
+              for (const l of locs) if (!cloudIds.has(l._id)) delStmt.run(l._id);
+            }
+          });
+          syncCategoriesTx(cats);
         }
-      } catch (e) { console.warn('[Sync] Tables pull error:', e.message); }
+      } catch (e) { console.warn('[Sync] Categories processing error:', e.message); }
 
-      // Pull Network Printers
+      // 2. Process Menu Items
       try {
-        const pRes = await fetch(`${CLOUD_API}/printers?branchId=${bid}`, { timeout: 4000, headers });
-        if (pRes.ok) {
-          const pData = await pRes.json();
-          const printers = Array.isArray(pData) ? pData : (pData?.data || pData?.printers || []);
-          const pStmt = db.prepare(`INSERT OR REPLACE INTO printers (_id, branch_id, name, ip, ip_address, port, type, duty, role, sections, isActive, is_active, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))`);
-          const cloudIds = new Set();
-          for (const pr of printers) {
-            if (!pr?._id) continue;
-            cloudIds.add(String(pr._id));
-            const ip = pr.ip || pr.ipAddress || pr.ip_address || '';
-            const active = (pr.isActive === false || pr.is_active === 0) ? 0 : 1;
-            const secStr = Array.isArray(pr.sections) ? JSON.stringify(pr.sections) : (pr.sections || '["ALL"]');
-            pStmt.run(String(pr._id), String(bid), pr.name || 'Printer', ip, ip, Number(pr.port) || 9100, pr.type || 'thermal', pr.duty || 'KOT', pr.role || 'kitchen', secStr, active, active);
-          }
-          const pending = db.prepare("SELECT COUNT(*) as c FROM sync_log WHERE table_name='printers' AND synced=0").get().c;
-          if (pending === 0 && cloudIds.size > 0) {
-            const locs = db.prepare("SELECT _id FROM printers WHERE branch_id=?").all(String(bid)) || [];
-            const delStmt = db.prepare("DELETE FROM printers WHERE _id=?");
-            for (const l of locs) if (!cloudIds.has(l._id)) delStmt.run(l._id);
-          }
+        if (mRes && mRes.ok) {
+          const mData = await mRes.json().catch(() => null);
+          const items = Array.isArray(mData) ? mData : (mData?.data || mData?.menuItems || []);
+          const syncMenuItemsTx = db.transaction((itemList) => {
+            const mStmt = db.prepare(`INSERT OR REPLACE INTO menu_items (_id, branch_id, category_id, name, price, available, core, tax_rate, description, variants, addons, sections, badge, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))`);
+            const cloudIds = new Set();
+            for (const it of itemList) {
+              if (!it?._id) continue;
+              cloudIds.add(String(it._id));
+              const catId = it.categoryId || it.category_id || '';
+              const avail = (it.isAvailable === false || it.available === false || it.available === 0) ? 0 : 1;
+              const coreVal = it.core !== null && it.core !== undefined && it.core !== '' ? Number(it.core) : null;
+              const taxRateVal = (it.taxRate !== null && it.taxRate !== undefined) ? Number(it.taxRate) : ((it.tax_rate !== null && it.tax_rate !== undefined) ? Number(it.tax_rate) : 0);
+              const descVal = it.description || '';
+              const variantsVal = it.variants ? (typeof it.variants === 'string' ? it.variants : JSON.stringify(it.variants)) : JSON.stringify([{ name: 'Regular', price: Number(it.price) || 0 }]);
+              const addonsVal = it.addons ? (typeof it.addons === 'string' ? it.addons : JSON.stringify(it.addons)) : JSON.stringify([]);
+              const sectionsVal = it.sections ? (typeof it.sections === 'string' ? it.sections : JSON.stringify(it.sections)) : JSON.stringify(['ALL']);
+              const badgeVal = it.badge || null;
+              mStmt.run(String(it._id), String(bid), String(catId), it.name || 'Dish', Number(it.price) || 0, avail, coreVal, taxRateVal, descVal, variantsVal, addonsVal, sectionsVal, badgeVal);
+            }
+            const pending = db.prepare("SELECT COUNT(*) as c FROM sync_log WHERE table_name='menu_items' AND synced=0").get().c;
+            if (pending === 0 && cloudIds.size > 0) {
+              const locs = db.prepare("SELECT _id FROM menu_items WHERE branch_id=?").all(String(bid)) || [];
+              const delStmt = db.prepare("DELETE FROM menu_items WHERE _id=?");
+              for (const l of locs) if (!cloudIds.has(l._id)) delStmt.run(l._id);
+            }
+          });
+          syncMenuItemsTx(items);
         }
-      } catch (e) { console.warn('[Sync] Printers pull error:', e.message); }
+      } catch (e) { console.warn('[Sync] Menu items processing error:', e.message); }
+
+      // 3. Process Sections
+      try {
+        if (sRes && sRes.ok) {
+          const sData = await sRes.json().catch(() => null);
+          const sections = Array.isArray(sData) ? sData : (sData?.data || sData?.sections || []);
+          const syncSectionsTx = db.transaction((sectionList) => {
+            const sStmt = db.prepare(`INSERT OR REPLACE INTO sections (_id, branch_id, name, updated_at) VALUES (?, ?, ?, datetime('now'))`);
+            const cloudIds = new Set();
+            for (const sec of sectionList) {
+              if (!sec?._id) continue;
+              cloudIds.add(String(sec._id));
+              sStmt.run(String(sec._id), String(bid), sec.name || 'Section');
+            }
+            const pending = db.prepare("SELECT COUNT(*) as c FROM sync_log WHERE table_name='sections' AND synced=0").get().c;
+            if (pending === 0 && cloudIds.size > 0) {
+              const locs = db.prepare("SELECT _id FROM sections WHERE branch_id=?").all(String(bid)) || [];
+              const delStmt = db.prepare("DELETE FROM sections WHERE _id=?");
+              for (const l of locs) if (!cloudIds.has(l._id)) delStmt.run(l._id);
+            }
+          });
+          syncSectionsTx(sections);
+        }
+      } catch (e) { console.warn('[Sync] Sections processing error:', e.message); }
+
+      // 4. Process Tables (Safely preserving active local dine-in order state!)
+      try {
+        if (tRes && tRes.ok) {
+          const tData = await tRes.json().catch(() => null);
+          const tables = Array.isArray(tData) ? tData : (tData?.data || tData?.tables || []);
+          const syncTablesTx = db.transaction((tableList) => {
+            const checkStmt  = db.prepare('SELECT current_order_id, status FROM tables WHERE _id = ?');
+            const updateStmt = db.prepare(`UPDATE tables SET branch_id=?, section_id=?, sectionName=?, tableNumber=?, capacity=?, status=COALESCE(?, status), updated_at=datetime('now') WHERE _id=?`);
+            const insertStmt = db.prepare(`INSERT INTO tables (_id, branch_id, section_id, sectionName, tableNumber, capacity, status, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'))`);
+            const cloudIds = new Set();
+            for (const tb of tableList) {
+              if (!tb?._id) continue;
+              cloudIds.add(String(tb._id));
+              const secId   = tb.sectionId || tb.section_id || '';
+              const secName = tb.sectionName || tb.section_name || 'Main Dining';
+              const cap     = Number(tb.capacity) || 4;
+              const existing = checkStmt.get(String(tb._id));
+              if (existing) {
+                const keepStatus = existing.current_order_id ? existing.status : (tb.status || 'Available');
+                updateStmt.run(String(bid), String(secId), secName, tb.tableNumber || 'TBL', cap, keepStatus, String(tb._id));
+              } else {
+                insertStmt.run(String(tb._id), String(bid), String(secId), secName, tb.tableNumber || 'TBL', cap, tb.status || 'Available');
+              }
+            }
+            const pending = db.prepare("SELECT COUNT(*) as c FROM sync_log WHERE table_name='tables' AND synced=0").get().c;
+            if (pending === 0 && cloudIds.size > 0) {
+              const locs = db.prepare("SELECT _id, current_order_id FROM tables WHERE branch_id=?").all(String(bid)) || [];
+              const delStmt = db.prepare("DELETE FROM tables WHERE _id=?");
+              for (const l of locs) if (!cloudIds.has(l._id)) delStmt.run(l._id);
+            }
+          });
+          syncTablesTx(tables);
+        }
+      } catch (e) { console.warn('[Sync] Tables processing error:', e.message); }
+
+      // 5. Process Network Printers
+      try {
+        if (pRes && pRes.ok) {
+          const pData = await pRes.json().catch(() => null);
+          const printers = Array.isArray(pData) ? pData : (pData?.data || pData?.printers || []);
+          const syncPrintersTx = db.transaction((printerList) => {
+            const pStmt = db.prepare(`INSERT OR REPLACE INTO printers (_id, branch_id, name, ip, ip_address, port, type, duty, role, sections, isActive, is_active, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))`);
+            const cloudIds = new Set();
+            for (const pr of printerList) {
+              if (!pr?._id) continue;
+              cloudIds.add(String(pr._id));
+              const ip = pr.ip || pr.ipAddress || pr.ip_address || '';
+              const active = (pr.isActive === false || pr.is_active === 0) ? 0 : 1;
+              const secStr = Array.isArray(pr.sections) ? JSON.stringify(pr.sections) : (pr.sections || '["ALL"]');
+              pStmt.run(String(pr._id), String(bid), pr.name || 'Printer', ip, ip, Number(pr.port) || 9100, pr.type || 'thermal', pr.duty || 'KOT', pr.role || 'kitchen', secStr, active, active);
+            }
+            const pending = db.prepare("SELECT COUNT(*) as c FROM sync_log WHERE table_name='printers' AND synced=0").get().c;
+            if (pending === 0 && cloudIds.size > 0) {
+              const locs = db.prepare("SELECT _id FROM printers WHERE branch_id=?").all(String(bid)) || [];
+              const delStmt = db.prepare("DELETE FROM printers WHERE _id=?");
+              for (const l of locs) if (!cloudIds.has(l._id)) delStmt.run(l._id);
+            }
+          });
+          syncPrintersTx(printers);
+        }
+      } catch (e) { console.warn('[Sync] Printers processing error:', e.message); }
     }
   } catch (err) {
     console.warn('[Sync] Pull error:', err.message);
   }
 }
 
-async function runSync() {
+async function runSync(options = {}) {
+  const forcePull = (typeof options === 'object' && options?.forcePull === true) || options === true;
   if (isSyncing) return;
   isSyncing = true;
 
@@ -223,7 +248,7 @@ async function runSync() {
     // 1. FIRST check and push locally occurring events from sync_log up to cloud
     if (token) {
       const rows = db.prepare(
-        'SELECT * FROM sync_log WHERE synced=0 ORDER BY id ASC LIMIT 100'
+        'SELECT * FROM sync_log WHERE synced=0 ORDER BY id ASC LIMIT 250'
       ).all();
 
       if (rows.length > 0) {
@@ -267,8 +292,16 @@ async function runSync() {
       }
     }
 
-    // 2. AFTER pushing local changes, pull latest master data from cloud into local SQLite
-    await pullFromCloud(db, token);
+    // 2. INFREQUENT CATALOG PULL: Pull master catalog data (menu, tables, sections, printers, staff)
+    // Runs on initial startup or every 3 minutes (PULL_INTERVAL_MS).
+    const now = Date.now();
+    const shouldPull = forcePull || !lastPullAt || (now - lastPullAt >= PULL_INTERVAL_MS);
+
+    if (shouldPull) {
+      console.log(`[Sync] Pulling master catalog from cloud (${forcePull ? 'forced/startup' : 'scheduled 3m cycle'})...`);
+      await pullFromCloud(db, token);
+      lastPullAt = Date.now();
+    }
 
     pendingCount = db.prepare('SELECT COUNT(*) as c FROM sync_log WHERE synced=0').get().c;
   } catch (err) {
