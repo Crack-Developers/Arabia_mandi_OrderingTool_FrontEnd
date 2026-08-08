@@ -486,19 +486,25 @@ export const DishSummaryPage: React.FC = () => {
             >
               ALL CATEGORIES
             </button>
-            {categories.map((cat) => (
-              <button
-                key={cat._id}
-                onClick={() => setSelectedCategory(cat.name)}
-                className={`px-3 py-1.5 rounded-lg text-xs font-extrabold whitespace-nowrap transition-all ${
-                  selectedCategory === cat.name
-                    ? 'bg-amber-50 text-amber-700 border border-amber-200'
-                    : 'bg-slate-50 text-slate-600 hover:bg-slate-100 hover:text-slate-900 border border-slate-200'
-                }`}
-              >
-                {cat.name}
-              </button>
-            ))}
+            {Array.from(
+              new Map(
+                categories.map((cat) => [cat.name.trim().toLowerCase(), cat.name.trim()])
+              ).values()
+            )
+              .sort((a, b) => a.localeCompare(b))
+              .map((catName) => (
+                <button
+                  key={catName}
+                  onClick={() => setSelectedCategory(catName)}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-extrabold whitespace-nowrap transition-all ${
+                    selectedCategory.toLowerCase() === catName.toLowerCase()
+                      ? 'bg-amber-50 text-amber-700 border border-amber-200'
+                      : 'bg-slate-50 text-slate-600 hover:bg-slate-100 hover:text-slate-900 border border-slate-200'
+                  }`}
+                >
+                  {catName}
+                </button>
+              ))}
           </div>
         </div>
 
