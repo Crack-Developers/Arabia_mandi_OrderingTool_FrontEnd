@@ -112,7 +112,7 @@ export const ReceptionDashboard: React.FC = () => {
   const [quickAddCatId, setQuickAddCatId] = useState<string>('');
   const [quickDishName, setQuickDishName] = useState<string>('');
   const [quickDishPrice, setQuickDishPrice] = useState<string>('450');
-  const [quickDishTax, setQuickDishTax] = useState<string>('5');
+  const [quickDishTax, setQuickDishTax] = useState<string>('');
   const [quickDishCore, setQuickDishCore] = useState<string>('');
   const [editingDishId, setEditingDishId] = useState<string | null>(null);
 
@@ -148,7 +148,7 @@ export const ReceptionDashboard: React.FC = () => {
       useERPStore.getState().updateMenuItem(editingDishId, {
         name: quickDishName.trim(),
         categoryId: finalCatId,
-        taxRate: parseFloat(quickDishTax) || 0,
+        taxRate: quickDishTax.trim() !== '' && !isNaN(Number(quickDishTax)) ? parseFloat(quickDishTax) : 0,
         core: quickDishCore.trim() !== '' ? parseInt(quickDishCore, 10) : undefined,
         variants: [{ name: 'Standard / Base', price: parseFloat(quickDishPrice) || 0 }],
       });
@@ -159,7 +159,7 @@ export const ReceptionDashboard: React.FC = () => {
         categoryId: finalCatId,
         available: true,
         active: true,
-        taxRate: parseFloat(quickDishTax) || 0,
+        taxRate: quickDishTax.trim() !== '' && !isNaN(Number(quickDishTax)) ? parseFloat(quickDishTax) : 0,
         core: quickDishCore.trim() !== '' ? parseInt(quickDishCore, 10) : undefined,
         variants: [{ name: 'Standard / Base', price: parseFloat(quickDishPrice) || 0 }],
         addons: [],
@@ -168,7 +168,7 @@ export const ReceptionDashboard: React.FC = () => {
 
     setQuickDishName('');
     setQuickDishPrice('450');
-    setQuickDishTax('5');
+    setQuickDishTax('');
     setQuickDishCore('');
     setEditingDishId(null);
     setShowQuickAddModal(false);
@@ -1016,7 +1016,7 @@ export const ReceptionDashboard: React.FC = () => {
                                         setEditingDishId(item._id);
                                         setQuickDishName(item.name);
                                         setQuickDishPrice(item.variants?.[0]?.price?.toString() || '450');
-                                        setQuickDishTax(item.taxRate?.toString() || '5');
+                                        setQuickDishTax(item.taxRate != null ? item.taxRate.toString() : '');
                                         setQuickDishCore(item.core != null ? item.core.toString() : '');
                                         setQuickAddCatId(item.categoryId);
                                         setShowQuickAddModal(true);
@@ -2019,12 +2019,13 @@ export const ReceptionDashboard: React.FC = () => {
               <div>
                 <label className="block text-xs font-bold text-slate-700 mb-1.5">
                   Tax Rate (%)
+                  <span className="ml-1 text-[10px] font-normal text-slate-400">(optional – default 0%)</span>
                 </label>
                 <input
                   type="number"
-                  required
                   step="any"
-                  placeholder="e.g. 5"
+                  min="0"
+                  placeholder="0"
                   value={quickDishTax}
                   onChange={(e) => setQuickDishTax(e.target.value)}
                   className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-xs font-bold text-slate-900 bg-slate-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-amber-500"

@@ -38,7 +38,7 @@ export const MenuManager: React.FC = () => {
   const [core, setCore] = useState('');
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [basePrice, setBasePrice] = useState('450');
-  const [taxRate, setTaxRate] = useState('5');
+  const [taxRate, setTaxRate] = useState('');
   const [variants, setVariants] = useState<{ name: string; price: string }[]>([]);
 
   const matchingCategories = activeCategories
@@ -110,7 +110,7 @@ export const MenuManager: React.FC = () => {
       categoryId: effCategoryId,
       available: true,
       active: true,
-      taxRate: parseFloat(taxRate) || 0,
+      taxRate: taxRate.trim() !== '' && !isNaN(Number(taxRate)) ? parseFloat(taxRate) : 0,
       variants: effVariants,
       addons: [],
       core: core.trim() !== '' ? parseInt(core, 10) : undefined,
@@ -118,7 +118,7 @@ export const MenuManager: React.FC = () => {
 
     setName('');
     setBasePrice('450');
-    setTaxRate('5');
+    setTaxRate('');
     setCore('');
     setVariants([]);
     setShowAddModal(false);
@@ -429,12 +429,15 @@ export const MenuManager: React.FC = () => {
 
 
               <div>
-                <label className="block text-xs font-bold text-slate-700">Tax Rate (%)</label>
+                <label className="block text-xs font-bold text-slate-700">
+                  Tax Rate (%)
+                  <span className="ml-1 text-[10px] font-normal text-slate-400">(optional – default 0%)</span>
+                </label>
                 <input
                   type="number"
-                  required
                   step="any"
-                  placeholder="e.g. 5"
+                  min="0"
+                  placeholder="0"
                   value={taxRate}
                   onChange={(e) => setTaxRate(e.target.value)}
                   className="w-full mt-1.5 px-3.5 py-2.5 rounded-xl border border-slate-200 text-xs font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-amber-500"

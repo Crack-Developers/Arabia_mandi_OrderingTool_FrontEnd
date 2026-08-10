@@ -241,6 +241,7 @@ export const syncApi = {
   upload: (items: any[]) => post<any>('/sync/upload', { items }),
   getStatus: () => get<any>('/sync/status'),
   markSynced: (ids: string[]) => post<any>('/sync/mark-synced', { ids }),
+  forceSync: () => post<any>('/sync/force', {}),
 };
 
 // ────────────────────────────────────────────────────────────────────────────

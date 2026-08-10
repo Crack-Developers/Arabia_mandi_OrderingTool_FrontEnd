@@ -909,7 +909,7 @@ export const useERPStore = create<ERPState>()(
       addons: itemData.addons || [],
       badge: itemData.badge,
       sections: itemData.sections || ['ALL'],
-      taxRate: itemData.taxRate !== undefined ? Number(itemData.taxRate) : 5,
+      taxRate: (itemData.taxRate !== undefined && itemData.taxRate !== null && !isNaN(Number(itemData.taxRate))) ? Number(itemData.taxRate) : 0,
       ...(itemData.core != null && { core: itemData.core }),
       available: true,
       active: true,
@@ -1020,7 +1020,7 @@ export const useERPStore = create<ERPState>()(
       variantName: variant.name,
       price: Number(variant.price) || 0,
       quantity: 1,
-      taxRate: (item.taxRate !== undefined && item.taxRate !== null) ? Number(item.taxRate) : 5,
+      taxRate: (item.taxRate !== undefined && item.taxRate !== null && !isNaN(Number(item.taxRate))) ? Number(item.taxRate) : 0,
       addons,
       notes,
     };
@@ -1031,7 +1031,7 @@ export const useERPStore = create<ERPState>()(
     newItems.forEach((i) => {
       const itemSubtotal = ((Number(i.price) || 0) + (i.addons || []).reduce((acc: number, a: any) => acc + (Number(a.price) || 0), 0)) * (Number(i.quantity) || 1);
       subtotal += itemSubtotal;
-      const tRate = (i.taxRate !== undefined && i.taxRate !== null) ? Number(i.taxRate) : 5;
+      const tRate = (i.taxRate !== undefined && i.taxRate !== null && !isNaN(Number(i.taxRate))) ? Number(i.taxRate) : 0;
       totalTax += itemSubtotal * (tRate / 100);
     });
 
@@ -1069,7 +1069,7 @@ export const useERPStore = create<ERPState>()(
     updatedItems.forEach((i) => {
       const itemSubtotal = ((Number(i.price) || 0) + (i.addons || []).reduce((acc: number, a: any) => acc + (Number(a.price) || 0), 0)) * (Number(i.quantity) || 1);
       subtotal += itemSubtotal;
-      const tRate = (i.taxRate !== undefined && i.taxRate !== null) ? Number(i.taxRate) : 5;
+      const tRate = (i.taxRate !== undefined && i.taxRate !== null && !isNaN(Number(i.taxRate))) ? Number(i.taxRate) : 0;
       totalTax += itemSubtotal * (tRate / 100);
     });
 
@@ -1523,8 +1523,8 @@ export const useERPStore = create<ERPState>()(
     set({ isSyncing: true });
     try {
       const { syncApi } = await import('../services/api.service');
-      const res = await syncApi.upload([]);
-      const pending = res?.data?.pending !== undefined ? res.data.pending : 0;
+      const res = await syncApi.forceSync();
+      const pending = res?.data?.pending !== undefined ? res.data.pending : (res?.data?.pendingCount || 0);
       set({
         syncQueue: Array(pending).fill({ id: 'pending' }),
         isSyncing: false,
