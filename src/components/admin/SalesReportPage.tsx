@@ -346,29 +346,35 @@ export const SalesReportPage: React.FC = () => {
 
                 {/* Bar Chart */}
                 <div className="h-48 flex items-end gap-3 pb-6 border-b border-slate-200 relative px-2">
-                  {(s?.hourlySales ?? HOURLY_BUCKETS).map((slot, i) => {
-                    const heightPct = maxHourly > 0 ? (slot.revenue / maxHourly) * 100 : 0;
-                    const isHighest = slot.revenue === maxHourly && maxHourly > 0;
-                    return (
-                      <div key={i} className="flex-1 flex flex-col items-center justify-end h-full group relative">
-                        {slot.revenue > 0 && (
-                          <div className="absolute -top-6 left-1/2 -translate-x-1/2 text-[10px] font-bold text-slate-400 opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap">
-                            {fmt(slot.revenue)}
-                          </div>
-                        )}
-                        <div
-                          className={`w-full rounded-t-md transition-all ${isHighest ? 'bg-blue-500' : 'bg-blue-300 group-hover:bg-blue-400'}`}
-                          style={{ height: `${Math.max(heightPct, slot.revenue > 0 ? 4 : 0)}%` }}
-                        />
-                      </div>
-                    );
-                  })}
+                  {maxHourly === 0 ? (
+                    <div className="absolute inset-0 flex items-center justify-center pb-6">
+                      <p className="text-sm font-medium text-slate-400">No hourly data available</p>
+                    </div>
+                  ) : (
+                    (s?.hourlySales ?? HOURLY_BUCKETS).map((slot, i) => {
+                      const heightPct = maxHourly > 0 ? (slot.revenue / maxHourly) * 100 : 0;
+                      const isHighest = slot.revenue === maxHourly && maxHourly > 0;
+                      return (
+                        <div key={i} className="flex-1 flex flex-col items-center justify-end h-full group relative">
+                          {slot.revenue > 0 && (
+                            <div className="absolute -top-6 left-1/2 -translate-x-1/2 text-[10px] font-bold text-slate-400 opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap">
+                              {fmt(slot.revenue)}
+                            </div>
+                          )}
+                          <div
+                            className={`w-full rounded-t-md transition-all ${isHighest ? 'bg-blue-500' : 'bg-blue-300 group-hover:bg-blue-400'}`}
+                            style={{ height: `${Math.max(heightPct, slot.revenue > 0 ? 4 : 0)}%` }}
+                          />
+                        </div>
+                      );
+                    })
+                  )}
                 </div>
 
                 {/* X-axis time labels */}
                 <div className="flex gap-3 mt-3 px-2">
                   {(s?.hourlySales ?? HOURLY_BUCKETS).map((slot, i) => (
-                    <div key={i} className="flex-1 text-center text-[9px] font-bold text-slate-400 leading-tight">
+                    <div key={i} className="flex-1 flex flex-col items-center gap-0.5 text-[9px] font-bold text-slate-400 leading-normal text-center">
                       {slot.label.split(' - ').map((t, j) => <div key={j}>{t}</div>)}
                     </div>
                   ))}
