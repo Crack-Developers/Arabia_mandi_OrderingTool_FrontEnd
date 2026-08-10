@@ -39,14 +39,24 @@ export const Navbar: React.FC = () => {
   const [showNotifs, setShowNotifs] = useState(false);
   const unreadCount = notifications.filter((n) => !n.read).length;
 
-  // Electron Desktop LAN & Sync state
+  // Electron Desktop LAN, Sync & Update state
   const [localIp, setLocalIp] = useState<string | null>(null);
   const [electronSync, setElectronSync] = useState<{ pendingCount?: number; isSyncing?: boolean; lastSyncAt?: string } | null>(null);
+  const [currentVersion, setCurrentVersion] = useState<string>('1.0');
+  const [updateAvailable, setUpdateAvailable] = useState<string | null>(null);
+  const [updateProgress, setUpdateProgress] = useState<number | null>(null);
+  const [updateDownloaded, setUpdateDownloaded] = useState<boolean>(false);
 
   useEffect(() => {
     const api = (window as any).electronAPI;
     if (api && api.isElectron) {
       api.getLocalIP?.().then((ip: string) => setLocalIp(ip)).catch(() => {});
+      api.getAppVersion?.().then((v: string) => setCurrentVersion(v)).catch(() => {});
+      
+      api.onUpdateAvailable?.((version: string) => setUpdateAvailable(version));
+      api.onUpdateProgress?.((percent: number) => setUpdateProgress(percent));
+      api.onUpdateDownloaded?.(() => setUpdateDownloaded(true));
+
       const fetchSync = () => {
         api.getSyncStatus?.().then((status: any) => {
           if (status) setElectronSync(status);
@@ -76,11 +86,37 @@ export const Navbar: React.FC = () => {
                 Arabia Mandi
               </h1>
               <span className="text-[11px] font-bold text-amber-300/80">العربية مندي</span>
+            <div className="flex items-center gap-2 mt-0.5">
+              <p className="text-[10px] text-slate-400 font-bold tracking-widest uppercase">
+                TASTE OF ARABIA • ERP v{currentVersion}
+              </p>
+
+              {updateAvailable && (
+                <button
+                  onClick={() => {
+                    const api = (window as any).electronAPI;
+                    if (updateDownloaded) {
+                      api.restartApp?.();
+                    } else if (updateProgress === null) {
+                      setUpdateProgress(0);
+                      api.downloadUpdate?.();
+                    }
+                  }}
+                  disabled={updateProgress !== null && !updateDownloaded}
+                  className="flex items-center gap-1.5 px-2 py-0.5 rounded-md border border-amber-600/60 bg-slate-800/80 hover:bg-slate-700 transition-all cursor-pointer shadow-sm disabled:cursor-wait"
+                  title={updateDownloaded ? 'Restart to install update' : 'Download update'}
+                >
+                  <div className={`w-1.5 h-1.5 rounded-full ${updateDownloaded ? 'bg-emerald-400 animate-pulse' : updateProgress !== null ? 'bg-blue-400' : 'bg-emerald-400'}`} />
+                  <span className="text-[10px] font-bold text-amber-400 tracking-wider">
+                    {updateDownloaded
+                      ? 'RESTART'
+                      : updateProgress !== null
+                      ? `${Math.round(updateProgress)}%`
+                      : `v${updateAvailable}`}
+                  </span>
+                </button>
+              )}
             </div>
-            <p className="text-[10px] text-slate-400 font-bold tracking-widest uppercase">
-              TASTE OF ARABIA • ERP v1.0
-            </p>
-          </div>
         </div>
 
         <div className="h-6 w-px bg-slate-700 hidden sm:block" />
