@@ -113,7 +113,7 @@ export const Navbar: React.FC = () => {
                       ? 'RESTART'
                       : updateProgress !== null
                       ? `${Math.round(updateProgress)}%`
-                      : `v${updateAvailable}`}
+                      : 'UPDATE AVAILABLE'}
                   </span>
                 </button>
               )}
