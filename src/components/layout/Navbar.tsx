@@ -86,6 +86,7 @@ export const Navbar: React.FC = () => {
                 Arabia Mandi
               </h1>
               <span className="text-[11px] font-bold text-amber-300/80">العربية مندي</span>
+            </div>
             <div className="flex items-center gap-2 mt-0.5">
               <p className="text-[10px] text-slate-400 font-bold tracking-widest uppercase">
                 TASTE OF ARABIA • ERP v{currentVersion}
