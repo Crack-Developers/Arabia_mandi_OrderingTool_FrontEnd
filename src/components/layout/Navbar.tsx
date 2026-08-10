@@ -118,6 +118,7 @@ export const Navbar: React.FC = () => {
                 </button>
               )}
             </div>
+          </div>
         </div>
 
         <div className="h-6 w-px bg-slate-700 hidden sm:block" />
