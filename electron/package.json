@@ -1,7 +1,7 @@
 {
-  "name": "petpooja-desktop",
+  "name": "campee-rms",
   "version": "1.0.0",
-  "description": "Petpooja POS Desktop Application — Offline-first branch client",
+  "description": "Campee RMS Desktop Application — Offline-first branch client",
   "author": "Ashik Christober <ashik@petpooja.com>",
   "homepage": "https://github.com/Crack-Developers/Arabia_mandi_OrderingTool_FrontEnd",
   "main": "main.js",
@@ -32,7 +32,7 @@
   },
   "build": {
     "appId": "com.petpooja.desktop",
-    "productName": "Petpooja POS",
+    "productName": "Campee RMS",
     "asar": true,
     "publish": null,
     "directories": {
@@ -79,10 +79,10 @@
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
-      "shortcutName": "Petpooja POS"
+      "shortcutName": "Campee RMS"
     },
     "dmg": {
-      "title": "Petpooja POS Installer"
+      "title": "Campee RMS Installer"
     }
   }
 }

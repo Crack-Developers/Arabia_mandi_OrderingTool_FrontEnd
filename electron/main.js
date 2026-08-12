@@ -56,7 +56,7 @@ function createWindow() {
       contextIsolation: true,
       webSecurity: false, // allow loading local files in production
     },
-    title: 'Petpooja POS',
+    title: 'Campee RMS',
     show: false, // wait for ready-to-show
   });
 
