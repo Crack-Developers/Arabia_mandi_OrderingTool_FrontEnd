@@ -13,7 +13,7 @@ import type {
   SyncQueueItem,
   Printer,
 } from '../types/erp.types';
-import { MOCK_STAFF } from '../constants/mockData';
+
 import {
   authApi,
   branchApi,
@@ -237,7 +237,7 @@ export const useERPStore = create<ERPState>()(
   isSettling: false,
   settlementError: null,
   settlementSuccess: null,
-  staffList: MOCK_STAFF,
+  staffList: [], // populated by fetchStaffList() on login — no mock data shown to client
   printers: [],
   discoveredPrinters: [],
 

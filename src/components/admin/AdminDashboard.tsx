@@ -109,7 +109,8 @@ export const AdminDashboard: React.FC = () => {
   const [leakageLogs, setLeakageLogs] = useState<any[]>([]);
   const [loadingLeakage, setLoadingLeakage] = useState(false);
 
-  const branchId = branchFilterId;
+  // Fix #3: never send 'ALL' as a branchId — pass undefined so the backend aggregates all branches
+  const branchId = branchFilterId === 'ALL' ? undefined : branchFilterId;
 
   const load = useCallback(async (silent = false) => {
     if (useERPStore.getState().isOfflineMode || !navigator.onLine) {
@@ -566,21 +567,6 @@ export const AdminDashboard: React.FC = () => {
                     Note: Data updates every 60 seconds from the local POS. For full history, check the Orders tab.
                   </p>
                 )}
-              </div>
-
-              {/* Expenses & Withdrawals pinned at bottom */}
-              <div className="border-t border-slate-200 p-6 bg-slate-50/80">
-                <div className="flex justify-between items-center mb-2">
-                  <h3 className="font-bold text-slate-800 text-[15px]">Expenses &amp; Withdrawals</h3>
-                  <div className="flex items-center gap-2 border border-slate-200 rounded-lg px-2.5 py-1 text-xs font-medium bg-white shadow-sm">
-                    <span>{formatDate(selectedDate)}</span>
-                    <Calendar className="w-3.5 h-3.5 text-slate-400" />
-                  </div>
-                </div>
-                <div className="flex justify-between items-center text-sm mt-3">
-                  <span className="text-slate-500 font-medium">Total</span>
-                  <span className="font-extrabold text-slate-900 text-lg">{fmt(d?.expensesWithdrawals.total ?? 0)}</span>
-                </div>
               </div>
             </div>
 

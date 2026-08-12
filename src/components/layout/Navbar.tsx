@@ -42,7 +42,10 @@ export const Navbar: React.FC = () => {
   // Electron Desktop LAN, Sync & Update state
   const [localIp, setLocalIp] = useState<string | null>(null);
   const [electronSync, setElectronSync] = useState<{ pendingCount?: number; isSyncing?: boolean; lastSyncAt?: string } | null>(null);
-  const [currentVersion, setCurrentVersion] = useState<string>('1.0');
+  // Fix #6: Use Vite build-time version on web; Electron overrides via IPC
+  const [currentVersion, setCurrentVersion] = useState<string>(
+    (import.meta.env.VITE_APP_VERSION as string) || '1.1.0'
+  );
   const [updateAvailable, setUpdateAvailable] = useState<string | null>(null);
   const [updateProgress, setUpdateProgress] = useState<number | null>(null);
   const [updateDownloaded, setUpdateDownloaded] = useState<boolean>(false);
