@@ -106,9 +106,16 @@ export const PrintModal: React.FC = () => {
           {/* Metadata */}
           <div className="border-b border-dashed border-slate-300 pb-2 text-[11px] space-y-1">
             <div className="flex justify-between">
+              <span>Name:</span>
+              <span className="font-bold">
+                {orderData?.customerName || currentBranch.receiptSettings?.headerText || currentBranch.name || ''}
+              </span>
+            </div>
+            <div className="flex justify-between">
               <span>{isKOT ? 'KOT No:' : 'Bill No:'}</span>
               <span className="font-bold">{isKOT ? kotData?.kotNumber : billData?.billNumber}</span>
             </div>
+
             <div className="flex justify-between">
               <span>Table:</span>
               <span className="font-bold">
@@ -185,8 +192,9 @@ export const PrintModal: React.FC = () => {
                 <span>₹{Number(billData.subtotal || 0).toFixed(2)}</span>
               </div>
               {(() => {
-                const taxGroups: Record<number, { taxable: number; tax: number }> = {};
+                let totalTax = 0;
                 let hasTaxes = false;
+                const taxGroups: Record<number, { taxable: number; tax: number }> = {};
                 (displayItems || []).forEach((item: any) => {
                   const qty = item.qty || item.quantity || 1;
                   const price = (Number(item.price) || 0) * qty;
@@ -200,39 +208,23 @@ export const PrintModal: React.FC = () => {
                 });
 
                 if (hasTaxes) {
-                  return Object.keys(taxGroups).map((rateStr) => {
-                    const rate = Number(rateStr);
-                    const halfRate = rate / 2;
-                    const grp = taxGroups[rate];
-                    return (
-                      <React.Fragment key={rateStr}>
-                        <div className="flex justify-between text-slate-600">
-                          <span>{grp.taxable.toFixed(2)}@ CGST@{halfRate} {halfRate}%</span>
-                          <span>₹{(grp.tax / 2).toFixed(2)}</span>
-                        </div>
-                        <div className="flex justify-between text-slate-600">
-                          <span>{grp.taxable.toFixed(2)}@ SGST@{halfRate} {halfRate}%</span>
-                          <span>₹{(grp.tax / 2).toFixed(2)}</span>
-                        </div>
-                      </React.Fragment>
-                    );
-                  });
+                  for (const rateStr of Object.keys(taxGroups)) {
+                    totalTax += taxGroups[Number(rateStr)].tax;
+                  }
                 } else if (Number(billData.cgst) > 0 || Number(billData.sgst) > 0) {
-                  return (
-                    <>
-                      <div className="flex justify-between text-slate-600">
-                        <span>CGST:</span>
-                        <span>₹{Number(billData.cgst || 0).toFixed(2)}</span>
-                      </div>
-                      <div className="flex justify-between text-slate-600">
-                        <span>SGST:</span>
-                        <span>₹{Number(billData.sgst || 0).toFixed(2)}</span>
-                      </div>
-                    </>
-                  );
+                  totalTax = Number(billData.cgst || 0) + Number(billData.sgst || 0);
+                } else if (Number(billData.tax) > 0) {
+                  totalTax = Number(billData.tax);
                 }
-                return null;
+
+                return (
+                  <div className="flex justify-between text-slate-600">
+                    <span>Tax:</span>
+                    <span>₹{totalTax.toFixed(2)}</span>
+                  </div>
+                );
               })()}
+
               <div className="flex justify-between font-extrabold text-sm pt-1 border-t border-slate-200">
                 <span className="text-xs uppercase text-slate-500">
                   {billData.paymentStatus === 'Paid' || orderData?.status === 'Completed' ? 'Paid' : 'Not Paid'}
