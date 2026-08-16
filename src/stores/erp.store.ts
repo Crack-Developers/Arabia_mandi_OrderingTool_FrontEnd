@@ -1213,8 +1213,16 @@ export const useERPStore = create<ERPState>()(
 
     // Sync to backend & Print
     (async () => {
+      let clientDispatched = false;
       if (withPrint) {
-        get().printKOTBySection(newKot, tableId);
+        // Attempt to dispatch directly from the frontend to the printer.
+        // Track whether this succeeded so we can tell the backend NOT to re-dispatch.
+        try {
+          await get().printKOTBySection(newKot, tableId);
+          clientDispatched = true; // Frontend successfully dispatched — tell backend to skip
+        } catch {
+          clientDispatched = false; // Dispatch failed — let backend handle it
+        }
       }
 
       let backendHandled = false;
@@ -1222,7 +1230,8 @@ export const useERPStore = create<ERPState>()(
         const { orderApi } = await import('../services/api.service');
         const dbOrderId = order.dbOrderId || order._id;
         if (dbOrderId && !dbOrderId.startsWith('local-')) {
-          const res = await orderApi.generateKOT(dbOrderId, withPrint, updatedOrder.items);
+          // Pass clientDispatched so the backend knows not to re-dispatch to the printer
+          const res = await orderApi.generateKOT(dbOrderId, withPrint, updatedOrder.items, clientDispatched);
           backendHandled = true;
 
           // ── Sync backend's authoritative item list back to local state ────

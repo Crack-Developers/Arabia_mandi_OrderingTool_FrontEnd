@@ -181,7 +181,7 @@ export const orderApi = {
   create: (data: any) => post<any>('/orders', data),
   addItems: (id: string, items: any[]) => post<any>(`/orders/${id}/add-items`, { items }),
   updateStatus: (id: string, status: string) => patch<any>(`/orders/${id}/status`, { status }),
-  generateKOT: (id: string, withPrint: boolean = true, items?: any[]) => post<any>(`/orders/${id}/kot`, { withPrint, items }),
+  generateKOT: (id: string, withPrint: boolean = true, items?: any[], clientDispatched: boolean = false) => post<any>(`/orders/${id}/kot`, { withPrint, items, clientDispatched }),
   generateBill: (id: string, branchId: string) => post<any>(`/orders/${id}/bill`, { branchId }),
   processPayment: (billId: string, paymentMethods: { cash: number; card: number; upi: number }) =>
     post<any>('/orders/payment', { billId, paymentMethods }),
