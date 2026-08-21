@@ -1230,8 +1230,9 @@ export const useERPStore = create<ERPState>()(
         const { orderApi } = await import('../services/api.service');
         const dbOrderId = order.dbOrderId || order._id;
         if (dbOrderId && !dbOrderId.startsWith('local-')) {
-          // Pass clientDispatched so the backend knows not to re-dispatch to the printer
-          const res = await orderApi.generateKOT(dbOrderId, withPrint, updatedOrder.items, clientDispatched);
+          // Pass kotItems (new items for this KOT) and allItems (full order) separately
+          // so the backend prints only new items and syncs the full order state.
+          const res = await orderApi.generateKOT(dbOrderId, withPrint, updatedOrder.items, newItems, clientDispatched);
           backendHandled = true;
 
           // ── Sync backend's authoritative item list back to local state ────
